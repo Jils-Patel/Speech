@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Speech Conversation App</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>Speech Conversation App</h1>
+        <div class="conversation" id="conversation"></div>
+        <div class="progress">
+            <div class="progress-bar" id="progressBar"></div>
+        </div>
+        <div class="status" id="status">Press Start to begin the conversation</div>
+        <div class="controls">
+            <button id="startBtn">Start Conversation</button>
+            <button id="stopBtn" disabled>Stop Conversation</button>
+            <button id="downloadBtn" disabled>Download Transcript</button>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+</body>
+</html> 
