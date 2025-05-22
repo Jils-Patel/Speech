@@ -4,9 +4,8 @@ openai==1.12.0
 PyAudio==0.2.14
 websockets==11.0.3
 python-dotenv==1.0.0
-pygame==2.5.2
+sounddevice==0.4.6
 numpy==1.24.3
 google-cloud-texttospeech==2.15.0
 google-cloud-speech==2.21.0
 google-cloud-dialogflow-cx==1.27.0
-pydub==0.25.1
