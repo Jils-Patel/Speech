@@ -6,35 +6,49 @@ import queue
 from speech_recognition import Recognizer, Microphone
 from google.cloud import texttospeech
 from google.cloud import speech_v1 as speech
+from google.cloud import dialogflowcx_v3beta1 as dialogflowcx
 import pygame
 import os
 import pyaudio
 import wave
 import tempfile
 from pydub import AudioSegment
+import uuid
 
 app = Flask(__name__)
 
+# Initialize Google Cloud clients
 tts_client = texttospeech.TextToSpeechClient.from_service_account_json('gcp_key.json')
 speech_client = speech.SpeechClient.from_service_account_json('gcp_key.json')
 
+# Dialogflow CX configuration
+PROJECT_ID = "abiding-center-460016-k1"
+AGENT_ID = "84847bd0-ef09-4918-952d-8f9d8dff2b34"
+LOCATION_ID = "us-central1"
+LANGUAGE_CODE = "en-us"
+
+# Initialize Dialogflow CX client
+api_endpoint = f"{LOCATION_ID}-dialogflow.googleapis.com:443"
+client_options = {"api_endpoint": api_endpoint}
+dialogflow_client = dialogflowcx.SessionsClient(client_options=client_options)
+
+# Audio configuration
 FORMAT = pyaudio.paInt16
 CHANNELS = 1
-RATE = 16000  # Standard rate for speech recognition
-CHUNK = 1024  # Smaller chunks for faster processing
-MAX_RECORDING_SECONDS = 30  # Maximum total recording time as a safety limit
-SILENCE_THRESHOLD = 300  # Lowered threshold for better sensitivity
-SILENCE_SECONDS = 2.0  # Stop after this many seconds of silence
+RATE = 16000
+CHUNK = 1024
+MAX_RECORDING_SECONDS = 30
+SILENCE_THRESHOLD = 300
+SILENCE_SECONDS = 1.0
 MAX_SILENCE_CHUNKS = int(RATE / CHUNK * SILENCE_SECONDS)
 
+# Global state
 conversation_active = False
 audio_queue = queue.Queue()
 transcript = []
-current_question_index = 0
-questions = []
+current_session_id = None
 current_question = None
 current_answer = None
-current_feedback = None
 is_listening = False
 is_processing = False
 recording_thread = None
@@ -269,66 +283,76 @@ def recognize_speech():
 
 # Conversation thread function
 def conversation_thread():
-    global conversation_active, current_question_index, transcript, questions, current_question, current_answer, is_listening
+    global conversation_active, transcript, current_session_id, current_question, current_answer, is_listening
     
-    print(f"Starting conversation thread. Total questions: {len(questions)}")
+    print("Starting conversation thread with Dialogflow CX")
     
-    while conversation_active and current_question_index < len(questions):
+    # Create a new session
+    current_session_id = str(uuid.uuid4())
+    agent_path = f"projects/{PROJECT_ID}/locations/{LOCATION_ID}/agents/{AGENT_ID}"
+    session_path = f"{agent_path}/sessions/{current_session_id}"
+    
+    while conversation_active:
         try:
-            print(f"\n=== Processing Question {current_question_index + 1} ===")
+            print("\n=== Processing Dialogflow CX Interaction ===")
             
-            # Get current question
-            current_question = questions[current_question_index]
-            current_answer = None
-            is_listening = False
+            # Get response from Dialogflow CX
+            if current_answer:
+                text_input = dialogflowcx.TextInput(text=current_answer)
+                query_input = dialogflowcx.QueryInput(text=text_input, language_code=LANGUAGE_CODE)
+                
+                request = dialogflowcx.DetectIntentRequest(
+                    session=session_path,
+                    query_input=query_input,
+                )
+                
+                response = dialogflow_client.detect_intent(request=request)
+                
+                # Collect all response messages
+                response_texts = []
+                for msg in response.query_result.response_messages:
+                    if msg.text and msg.text.text:
+                        response_texts.extend(msg.text.text)
+                
+                if response_texts:
+                    current_question = " ".join(response_texts)
+                    print(f"Agent response: {current_question}")
+                    
+                    # Speak the response
+                    speak_text(current_question)
+                    
+                    # Add to transcript
+                    transcript.append({
+                        "question": current_question,
+                        "answer": current_answer
+                    })
+                    
+                    # Reset current answer for next interaction
+                    current_answer = None
+                    
+                    # Check if the conversation should end
+                    if response.query_result.intent and response.query_result.intent.end_conversation:
+                        print("Dialogflow CX indicated end of conversation")
+                        conversation_active = False
+                        break
+                else:
+                    print("No response from Dialogflow CX")
+                    time.sleep(0.5)
+                    continue
             
-            print(f"Speaking question: {current_question}")
-            # Speak the question
-            speak_text(current_question)
-            
-            # Small delay to let the question finish speaking
-            time.sleep(0.5)
-            
-            # Set listening state
+            # Wait for user input
             is_listening = True
-            print("Listening state set to True")
+            print("Listening for user input...")
             
-            # Wait for response
-            print("Calling recognize_speech()")
+            # Get user's speech input
             response = recognize_speech()
-            print(f"Response received: {response}")
-            
-            # Clear listening state
             is_listening = False
-            print("Listening state set to False")
             
             if response and response.strip():
-                print(f"Valid response received: {response}")
-                
-                # Update current answer
+                print(f"User said: {response}")
                 current_answer = response
-                
-                # Add to transcript
-                transcript.append({
-                    "question": current_question,
-                    "answer": response
-                })
-                print("Added to transcript")
-                
-                # Wait a moment to let the UI update before moving to next question
-                time.sleep(1)
-                
-                # Move to next question
-                current_question_index += 1
-                print(f"Moving to next question. New index: {current_question_index}")
-                
-                # If we've reached the end of questions, end the conversation
-                if current_question_index >= len(questions):
-                    print("Reached end of questions")
-                    conversation_active = False
-                    break
             else:
-                print("No valid response received, retrying current question")
+                print("No valid response received")
                 time.sleep(0.5)
                 continue
                 
@@ -358,20 +382,14 @@ def conversation_thread():
 def index():
     return render_template('index.html')
 
-@app.route('/get_questions', methods=['GET'])
-def get_questions():
-    global questions
-    questions = load_questions()
-    return jsonify({"questions": questions})
-
 @app.route('/start_conversation', methods=['POST'])
 def start_conversation():
-    global conversation_active, current_question_index, transcript, questions, current_question, current_answer, is_listening
+    global conversation_active, transcript, current_session_id, current_question, current_answer, is_listening
     
     # Reset conversation state
     conversation_active = True
-    current_question_index = 0
     transcript = []
+    current_session_id = None
     current_question = None
     current_answer = None
     is_listening = False
@@ -395,7 +413,6 @@ def stop_conversation():
 @app.route('/get_transcript', methods=['GET'])
 def get_transcript():
     global transcript
-    
     return jsonify({"transcript": transcript})
 
 @app.route('/download_transcript', methods=['GET'])
@@ -416,16 +433,14 @@ def download_transcript():
 
 @app.route('/conversation_status', methods=['GET'])
 def conversation_status():
-    global conversation_active, current_question_index, questions, current_question, current_answer, is_listening
+    global conversation_active, transcript, current_question, current_answer, is_listening
     
     status = {
         "active": conversation_active,
-        "current_question_index": current_question_index,
-        "total_questions": len(questions),
-        "completed": current_question_index >= len(questions) if questions else False,
         "current_question": current_question,
         "current_answer": current_answer,
-        "is_listening": is_listening
+        "is_listening": is_listening,
+        "completed": not conversation_active and len(transcript) > 0
     }
     
     return jsonify(status)

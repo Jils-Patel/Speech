@@ -1,34 +1,13 @@
 document.addEventListener('DOMContentLoaded', function() {
-    // DOM Elements
-    const conversationDiv = document.getElementById('conversation');
-    const statusDiv = document.getElementById('status');
-    const progressBar = document.getElementById('progressBar');
     const startBtn = document.getElementById('startBtn');
     const stopBtn = document.getElementById('stopBtn');
     const downloadBtn = document.getElementById('downloadBtn');
+    const statusDiv = document.getElementById('status');
+    const conversationDiv = document.getElementById('conversation');
+    const progressBar = document.getElementById('progressBar');
     
-    // Variables
-    let questions = [];
     let statusCheckInterval = null;
-    let lastQuestionIndex = -1;
-    let currentQuestionElement = null;
-    let currentAnswerElement = null;
     let listeningElement = null;
-    let lastAnswer = null;
-    
-    // Fetch questions from server
-    async function fetchQuestions() {
-        try {
-            const response = await fetch('/get_questions');
-            const data = await response.json();
-            questions = data.questions || [];
-            return questions.length > 0;
-        } catch (error) {
-            console.error('Error fetching questions:', error);
-            statusDiv.textContent = 'Failed to load questions. Please refresh.';
-            return false;
-        }
-    }
     
     // Start conversation
     async function startConversation() {
@@ -46,8 +25,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 startBtn.disabled = true;
                 stopBtn.disabled = false;
                 conversationDiv.innerHTML = '';
-                lastQuestionIndex = -1;
-                lastAnswer = null;
                 
                 // Start checking status
                 startStatusCheck();
@@ -111,16 +88,22 @@ document.addEventListener('DOMContentLoaded', function() {
             const response = await fetch('/conversation_status');
             const status = await response.json();
             
-            // Update progress bar
-            if (status.total_questions > 0) {
-                const progress = (status.current_question_index / status.total_questions) * 100;
-                progressBar.style.width = `${progress}%`;
-            }
-            
             // Update status text
             if (status.active) {
-                if (status.current_question_index < status.total_questions) {
-                    statusDiv.textContent = `Question ${status.current_question_index + 1} of ${status.total_questions}`;
+                if (status.is_listening) {
+                    statusDiv.textContent = 'Listening...';
+                    if (!listeningElement) {
+                        listeningElement = document.createElement('div');
+                        listeningElement.className = 'listening-indicator';
+                        listeningElement.textContent = '🎤 Listening...';
+                        conversationDiv.appendChild(listeningElement);
+                    }
+                } else {
+                    statusDiv.textContent = 'Processing...';
+                    if (listeningElement) {
+                        listeningElement.remove();
+                        listeningElement = null;
+                    }
                 }
                 
                 // Update conversation display
@@ -138,72 +121,37 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
     
-    // Update the conversation display in real-time
+    // Update conversation display
     function updateConversationDisplay(status) {
-        // Check if we have a new question
-        if (status.current_question && status.current_question_index > lastQuestionIndex) {
-            lastQuestionIndex = status.current_question_index;
-            lastAnswer = null;
+        if (status.current_question) {
+            // Check if this question is already displayed
+            const existingQuestions = conversationDiv.querySelectorAll('.question');
+            const lastQuestion = existingQuestions[existingQuestions.length - 1];
             
-            // Remove any previous current question/answer elements
-            if (currentQuestionElement) {
-                currentQuestionElement.className = 'question';
+            if (!lastQuestion || lastQuestion.textContent !== status.current_question) {
+                // Display new question
+                const questionDiv = document.createElement('div');
+                questionDiv.className = 'question';
+                questionDiv.textContent = status.current_question;
+                conversationDiv.appendChild(questionDiv);
             }
-            if (currentAnswerElement) {
-                currentAnswerElement.className = 'answer';
-                currentAnswerElement = null;
+        }
+        
+        if (status.current_answer) {
+            // Check if this answer is already displayed
+            const existingAnswers = conversationDiv.querySelectorAll('.answer');
+            const lastAnswer = existingAnswers[existingAnswers.length - 1];
+            
+            if (!lastAnswer || lastAnswer.textContent !== status.current_answer) {
+                // Display new answer
+                const answerDiv = document.createElement('div');
+                answerDiv.className = 'answer';
+                answerDiv.textContent = status.current_answer;
+                conversationDiv.appendChild(answerDiv);
             }
-            
-            // Create new current question element
-            currentQuestionElement = document.createElement('div');
-            currentQuestionElement.className = 'current-question';
-            currentQuestionElement.textContent = status.current_question;
-            conversationDiv.appendChild(currentQuestionElement);
-            
-            // Scroll to bottom
+        }
+        
             conversationDiv.scrollTop = conversationDiv.scrollHeight;
-        }
-        
-        // Update listening indicator
-        if (status.is_listening) {
-            if (!listeningElement) {
-                listeningElement = document.createElement('div');
-                listeningElement.className = 'listening';
-                listeningElement.textContent = 'Listening...';
-                conversationDiv.appendChild(listeningElement);
-                conversationDiv.scrollTop = conversationDiv.scrollHeight;
-            }
-        } else {
-            if (listeningElement) {
-                listeningElement.remove();
-                listeningElement = null;
-            }
-        }
-        
-        // Check if we have a new answer
-        if (status.current_answer && status.current_answer !== lastAnswer) {
-            lastAnswer = status.current_answer;
-            
-            // Create answer element if it doesn't exist
-            if (!currentAnswerElement) {
-                currentAnswerElement = document.createElement('div');
-                currentAnswerElement.className = 'current-answer';
-                conversationDiv.appendChild(currentAnswerElement);
-            }
-            
-            // Update answer text
-            currentAnswerElement.textContent = status.current_answer;
-            
-            // Scroll to bottom
-            conversationDiv.scrollTop = conversationDiv.scrollHeight;
-        }
-        
-        // Update status text
-        if (status.is_listening) {
-            statusDiv.textContent = 'Listening...';
-        } else if (status.current_answer) {
-            statusDiv.textContent = `Question ${status.current_question_index + 1} of ${status.total_questions}`;
-        }
     }
     
     // Fetch transcript
@@ -237,29 +185,11 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Download transcript
     function downloadTranscript() {
-        // Simply redirect to the download endpoint
         window.location.href = '/download_transcript';
     }
     
     // Event listeners
-    startBtn.addEventListener('click', async function() {
-        // Fetch questions if needed
-        if (questions.length === 0) {
-            const hasQuestions = await fetchQuestions();
-            if (!hasQuestions) {
-                return;
-            }
-        }
-        
-        // Start conversation
-        startConversation();
-    });
-    
-    stopBtn.addEventListener('click', function() {
-        stopConversation();
-    });
-    
-    downloadBtn.addEventListener('click', function() {
-        downloadTranscript();
-    });
+    startBtn.addEventListener('click', startConversation);
+    stopBtn.addEventListener('click', stopConversation);
+    downloadBtn.addEventListener('click', downloadTranscript);
 }); 
