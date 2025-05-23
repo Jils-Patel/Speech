@@ -6,8 +6,123 @@ document.addEventListener('DOMContentLoaded', function() {
     const conversationDiv = document.getElementById('conversation');
     const progressBar = document.getElementById('progressBar');
     
-    let statusCheckInterval = null;
     let listeningElement = null;
+    
+    // Initialize Socket.IO connection
+    const socket = io();
+    
+    // Socket.IO event listeners
+    socket.on('connect', function() {
+        console.log('Connected to server');
+    });
+    
+    socket.on('disconnect', function() {
+        console.log('Disconnected from server');
+    });
+    
+    // Listen for speech events
+    socket.on('listening_started', function(data) {
+        statusDiv.textContent = 'Listening...';
+        if (!listeningElement) {
+            listeningElement = document.createElement('div');
+            listeningElement.className = 'listening-indicator';
+            listeningElement.textContent = '🎤 Listening...';
+            conversationDiv.appendChild(listeningElement);
+        }
+    });
+    
+    socket.on('speech_detected', function(data) {
+        statusDiv.textContent = 'Speech detected...';
+        
+        // Update progress bar to show activity
+        animateProgressBar(30);
+    });
+    
+    socket.on('speech_ended', function(data) {
+        statusDiv.textContent = 'Processing speech...';
+        if (listeningElement) {
+            listeningElement.remove();
+            listeningElement = null;
+        }
+        
+        // Update progress bar
+        animateProgressBar(60);
+    });
+    
+    socket.on('transcription_complete', function(data) {
+        statusDiv.textContent = 'Transcription complete';
+        
+        // Create and display user's answer
+        const text = data.text || '';
+        const answerDiv = document.createElement('div');
+        answerDiv.className = 'answer';
+        answerDiv.textContent = text;
+        conversationDiv.appendChild(answerDiv);
+        
+        // Update progress bar
+        animateProgressBar(80);
+        
+        // Scroll to bottom
+        conversationDiv.scrollTop = conversationDiv.scrollHeight;
+    });
+    
+    socket.on('processing_user_input', function(data) {
+        statusDiv.textContent = 'Processing your response...';
+    });
+    
+    socket.on('agent_speaking', function(data) {
+        statusDiv.textContent = 'Agent speaking...';
+        
+        // Create and display agent's question
+        const text = data.text || '';
+        const questionDiv = document.createElement('div');
+        questionDiv.className = 'question';
+        questionDiv.textContent = text;
+        conversationDiv.appendChild(questionDiv);
+        
+        // Update progress bar
+        animateProgressBar(100);
+        
+        // Scroll to bottom
+        conversationDiv.scrollTop = conversationDiv.scrollHeight;
+    });
+    
+    socket.on('agent_finished_speaking', function() {
+        statusDiv.textContent = 'Your turn to speak';
+        
+        // Reset progress bar for next interaction
+        animateProgressBar(0);
+    });
+    
+    socket.on('conversation_ended', function(data) {
+        statusDiv.textContent = 'Conversation completed!';
+        stopBtn.disabled = true;
+        startBtn.disabled = false;
+        downloadBtn.disabled = false;
+        
+        // Remove listening indicator if present
+        if (listeningElement) {
+            listeningElement.remove();
+            listeningElement = null;
+        }
+    });
+    
+    socket.on('transcript_saved', function(data) {
+        statusDiv.textContent = `Transcript saved as ${data.filename}`;
+    });
+    
+    socket.on('no_speech_detected', function() {
+        statusDiv.textContent = 'No speech detected. Please try again.';
+        if (listeningElement) {
+            listeningElement.remove();
+            listeningElement = null;
+        }
+    });
+    
+    socket.on('conversation_error', function(data) {
+        statusDiv.textContent = `Error: ${data.error || 'Unknown error'}`;
+        console.error('Conversation error:', data.error);
+    });
     
     // Start conversation
     async function startConversation() {
@@ -25,9 +140,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 startBtn.disabled = true;
                 stopBtn.disabled = false;
                 conversationDiv.innerHTML = '';
-                
-                // Start checking status
-                startStatusCheck();
+                downloadBtn.disabled = true;
             } else {
                 statusDiv.textContent = 'Failed to start conversation';
             }
@@ -52,7 +165,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 statusDiv.textContent = 'Conversation stopped.';
                 startBtn.disabled = false;
                 stopBtn.disabled = true;
-                stopStatusCheck();
                 downloadBtn.disabled = false;
                 
                 // Remove any listening indicator
@@ -69,92 +181,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
     
-    // Start checking conversation status
-    function startStatusCheck() {
-        statusCheckInterval = setInterval(checkConversationStatus, 300);
-    }
-    
-    // Stop checking conversation status
-    function stopStatusCheck() {
-        if (statusCheckInterval) {
-            clearInterval(statusCheckInterval);
-            statusCheckInterval = null;
-        }
-    }
-    
-    // Check conversation status and update UI in real-time
-    async function checkConversationStatus() {
-        try {
-            const response = await fetch('/conversation_status');
-            const status = await response.json();
-            
-            // Update status text
-            if (status.active) {
-                if (status.is_listening) {
-                    statusDiv.textContent = 'Listening...';
-                    if (!listeningElement) {
-                        listeningElement = document.createElement('div');
-                        listeningElement.className = 'listening-indicator';
-                        listeningElement.textContent = '🎤 Listening...';
-                        conversationDiv.appendChild(listeningElement);
-                    }
-                } else {
-                    statusDiv.textContent = 'Processing...';
-                    if (listeningElement) {
-                        listeningElement.remove();
-                        listeningElement = null;
-                    }
-                }
-                
-                // Update conversation display
-                updateConversationDisplay(status);
-            } else if (status.completed) {
-                statusDiv.textContent = 'Conversation completed!';
-                stopBtn.disabled = true;
-                startBtn.disabled = false;
-                downloadBtn.disabled = false;
-                stopStatusCheck();
-                fetchTranscript();
-            }
-        } catch (error) {
-            console.error('Error checking conversation status:', error);
-        }
-    }
-    
-    // Update conversation display
-    function updateConversationDisplay(status) {
-        if (status.current_question) {
-            // Check if this question is already displayed
-            const existingQuestions = conversationDiv.querySelectorAll('.question');
-            const lastQuestion = existingQuestions[existingQuestions.length - 1];
-            
-            if (!lastQuestion || lastQuestion.textContent !== status.current_question) {
-                // Display new question
-                const questionDiv = document.createElement('div');
-                questionDiv.className = 'question';
-                questionDiv.textContent = status.current_question;
-                conversationDiv.appendChild(questionDiv);
-            }
-        }
-        
-        if (status.current_answer) {
-            // Check if this answer is already displayed
-            const existingAnswers = conversationDiv.querySelectorAll('.answer');
-            const lastAnswer = existingAnswers[existingAnswers.length - 1];
-            
-            if (!lastAnswer || lastAnswer.textContent !== status.current_answer) {
-                // Display new answer
-                const answerDiv = document.createElement('div');
-                answerDiv.className = 'answer';
-                answerDiv.textContent = status.current_answer;
-                conversationDiv.appendChild(answerDiv);
-            }
-        }
-        
-            conversationDiv.scrollTop = conversationDiv.scrollHeight;
-    }
-    
-    // Fetch transcript
+    // Fetch transcript if needed
     async function fetchTranscript() {
         try {
             const response = await fetch('/get_transcript');
@@ -186,6 +213,11 @@ document.addEventListener('DOMContentLoaded', function() {
     // Download transcript
     function downloadTranscript() {
         window.location.href = '/download_transcript';
+    }
+    
+    // Animate progress bar
+    function animateProgressBar(percentage) {
+        progressBar.style.width = percentage + '%';
     }
     
     // Event listeners
