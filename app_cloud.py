@@ -333,4 +333,4 @@ if __name__ == '__main__':
     print(f"Project: {PROJECT_ID}")
     print(f"Agent: {AGENT_ID}")
     print(f"Location: {LOCATION_ID}")
-    socketio.run(app, host='0.0.0.0', port=8083, debug=True) 
+    socketio.run(app, host='0.0.0.0', port=8080, debug=True) 
