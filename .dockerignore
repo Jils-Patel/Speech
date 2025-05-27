@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+.git/
+.gitignore
+README.md
+Dockerfile
+.dockerignore
+.env.example
+transcript_*.txt
+*.log
+.DS_Store
+app.py
+requirements.txt 
