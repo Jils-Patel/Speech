@@ -1,8 +1,9 @@
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, jsonify
 import time
 import base64
 import os
 import uuid
+import json
 from flask_socketio import SocketIO, emit
 from dotenv import load_dotenv
 from google.cloud import texttospeech
@@ -16,6 +17,17 @@ load_dotenv()
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'speech_conversation_secret_key'
 socketio = SocketIO(app, cors_allowed_origins="*", logger=True, engineio_logger=True)
+
+# Load members data
+def load_members():
+    try:
+        with open('members.json', 'r') as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"Error loading members.json: {e}")
+        return []
+
+members_data = load_members()
 
 # Initialize Google Cloud clients
 tts_client = texttospeech.TextToSpeechClient.from_service_account_json(os.getenv("GCP_KEY_PATH"))
@@ -45,6 +57,8 @@ class ConversationSession:
         self.agent_path = f"projects/{PROJECT_ID}/locations/{LOCATION_ID}/agents/{AGENT_ID}"
         self.session_path = f"{self.agent_path}/sessions/{self.dialogflow_session_id}"
         self.audio_count = 0
+        self.selected_member = None
+        self.first_message_sent = False
 
 def format_transcript_as_text(transcript_data):
     text_content = ""
@@ -146,7 +160,7 @@ def transcribe_audio_content(audio_content, encoding="WEBM_OPUS"):
         
         return None, 0
 
-def process_with_dialogflow(text, session_path):
+def process_with_dialogflow(text, session_path, member_params=None):
     try:
         text_input = dialogflowcx.TextInput(text=text)
         query_input = dialogflowcx.QueryInput(text=text_input, language_code=LANGUAGE_CODE)
@@ -155,6 +169,20 @@ def process_with_dialogflow(text, session_path):
             session=session_path,
             query_input=query_input,
         )
+        
+        # Add member parameters as session parameters if provided (first message only)
+        if member_params:
+            request.query_params = dialogflowcx.QueryParameters(
+                parameters={
+                    'member_id': member_params.get('member_id', ''),
+                    'first_name': member_params.get('first_name', ''),
+                    'last_name': member_params.get('last_name', ''),
+                    'DOB': member_params.get('DOB', ''),
+                    'email': member_params.get('email', ''),
+                    'last4ssn': member_params.get('last4ssn', '')
+                }
+            )
+            print(f"Sending member parameters to Dialogflow: {member_params}")
         
         response = dialogflow_client.detect_intent(request=request)
         
@@ -201,6 +229,7 @@ def handle_start_conversation():
         conv.is_active = True
         conv.transcript = []
         conv.audio_count = 0
+        conv.first_message_sent = False  # Reset first message flag
         
         emit('conversation_started', {
             'session_id': session_id,
@@ -271,7 +300,14 @@ def handle_audio_data(data):
                 'confidence': confidence
             })
             
-            response_text, query_result = process_with_dialogflow(transcript, conv.session_path)
+            # Determine if we need to send member parameters (first message only)
+            member_params = None
+            if not conv.first_message_sent and conv.selected_member:
+                member_params = conv.selected_member
+                conv.first_message_sent = True
+                print(f"Sending member parameters on first message: {member_params}")
+            
+            response_text, query_result = process_with_dialogflow(transcript, conv.session_path, member_params)
             
             if response_text:
                 print(f'Dialogflow response: {response_text}')
@@ -327,6 +363,40 @@ def handle_get_transcript():
         emit('current_transcript', {'transcript': conv.transcript})
     else:
         emit('error', {'message': 'No active conversation session'})
+
+@socketio.on('select_member')
+def handle_select_member(data):
+    session_id = request.sid
+    member_id = data.get('member_id')
+    
+    print(f'Member selected for session {session_id}: {member_id}')
+    
+    if session_id in conversations:
+        conv = conversations[session_id]
+        
+        # Find the selected member in members_data
+        selected_member = None
+        for member in members_data:
+            if member['member_id'] == member_id:
+                selected_member = member
+                break
+        
+        if selected_member:
+            conv.selected_member = selected_member
+            emit('member_selected', {
+                'member': selected_member,
+                'message': f'Selected member: {selected_member["first_name"]} {selected_member["last_name"]}'
+            })
+            print(f"Member {selected_member['first_name']} {selected_member['last_name']} selected for session {session_id}")
+        else:
+            emit('error', {'message': 'Member not found'})
+    else:
+        emit('error', {'message': 'Session not found. Please refresh the page.'})
+
+@app.route('/api/members')
+def get_members():
+    """API endpoint to get list of members"""
+    return jsonify(members_data)
 
 if __name__ == '__main__':
     print("Starting health assessment server...")

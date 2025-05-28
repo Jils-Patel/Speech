@@ -1,0 +1,43 @@
+[
+    {
+      "member_id": "M001",
+      "first_name": "Alice",
+      "last_name": "Johnson",
+      "DOB": "1985-03-12",
+      "email": "alice.johnson@example.com",
+      "last4ssn": "1234"
+    },
+    {
+      "member_id": "M002",
+      "first_name": "Bob",
+      "last_name": "Smith",
+      "DOB": "1990-07-28",
+      "email": "bob.smith@example.com",
+      "last4ssn": "5678"
+    },
+    {
+      "member_id": "M003",
+      "first_name": "Clara",
+      "last_name": "Nguyen",
+      "DOB": "1978-11-05",
+      "email": "clara.nguyen@example.com",
+      "last4ssn": "9012"
+    },
+    {
+      "member_id": "M004",
+      "first_name": "David",
+      "last_name": "Lee",
+      "DOB": "1995-02-18",
+      "email": "david.lee@example.com",
+      "last4ssn": "3456"
+    },
+    {
+      "member_id": "M005",
+      "first_name": "Eva",
+      "last_name": "Martinez",
+      "DOB": "1982-09-23",
+      "email": "eva.martinez@example.com",
+      "last4ssn": "7890"
+    }
+  ]
+  

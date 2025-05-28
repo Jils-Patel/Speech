@@ -302,6 +302,94 @@
             30% { transform: translateY(-10px); }
         }
         
+        .member-selection {
+            padding: 20px 30px;
+            background: white;
+            border-top: 1px solid #f0f0f0;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        
+        .member-selection h3 {
+            margin: 0 0 15px 0;
+            color: #333;
+            font-size: 18px;
+            font-weight: 600;
+        }
+        
+        .members-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 15px;
+        }
+        
+        .members-table th {
+            background: #f8f9fa;
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+            color: #333;
+            border-bottom: 2px solid #e9ecef;
+            font-size: 14px;
+        }
+        
+        .member-row {
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border-bottom: 1px solid #e9ecef;
+        }
+        
+        .member-row:hover {
+            background: #f0f8e8;
+        }
+        
+        .member-row.selected {
+            background: #e8f5e8;
+            border-left: 4px solid #78BE20;
+        }
+        
+        .member-row td {
+            padding: 12px;
+            font-size: 14px;
+            color: #333;
+        }
+        
+        .member-name-cell {
+            font-weight: 600;
+            color: #333;
+        }
+        
+        .member-id-cell {
+            color: #666;
+            font-family: monospace;
+        }
+        
+        .member-dob-cell {
+            color: #888;
+        }
+
+        .member-email-cell {
+            color: #888;
+        }
+
+        .member-ssn-cell {
+            color: #888;
+        }
+        
+        .selected-member-info {
+            background: #e8f5e8;
+            border: 1px solid #78BE20;
+            border-radius: 8px;
+            padding: 12px;
+            margin-top: 15px;
+            display: none;
+            font-size: 14px;
+        }
+        
+        .selected-member-info.show {
+            display: block;
+        }
+        
         /* Responsive design */
         @media (max-width: 768px) {
             body {
@@ -351,7 +439,7 @@
         </div>
         
         <div class="controls">
-            <button id="startBtn" class="btn" onclick="startConversation()">
+            <button id="startBtn" class="btn" onclick="startConversation()" disabled>
                 <span>▶</span> Start Assessment
             </button>
             <button id="stopBtn" class="btn btn-secondary" onclick="stopConversation()" disabled>
@@ -361,7 +449,6 @@
                 <span>📥</span> Download Transcript
             </button>
         </div>
-        
         <div class="status-bar">
             <div id="status" class="status ready">
                 <div class="status-indicator"></div>
@@ -377,13 +464,34 @@
             Please allow microphone access to continue.
         </div>
         
-        <div id="error" class="error"></div>
-        
         <div class="conversation-area" id="conversationArea">
             <div class="empty-state">
                 Conversation will appear here...<br>
             </div>
         </div>
+        
+        <div class="member-selection">
+            <table class="members-table" id="membersTable">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>ID</th>
+                        <th>DOB</th>
+                        <th>Email</th>
+                        <th>Last4SSN</th>
+                    </tr>
+                </thead>
+                <tbody id="membersTableBody">
+                    <!-- Members will be loaded here -->
+                </tbody>
+            </table>
+            <div class="selected-member-info" id="selectedMemberInfo">
+                <strong>Selected Member:</strong> <span id="selectedMemberName"></span>
+                <br><small>Member ID: <span id="selectedMemberId"></span></small>
+            </div>
+        </div>
+        
+        <div id="error" class="error"></div>
     </div>
 
     <script>
@@ -396,6 +504,8 @@
         let currentAudio = null;
         let conversationTranscript = [];
         let messageCount = 0;
+        let selectedMember = null;
+        let membersData = [];
         
         // Initialize Socket.IO connection
         function initializeSocket() {
@@ -498,6 +608,11 @@
                     stopListening();
                 }
             });
+            
+            socket.on('member_selected', function(data) {
+                console.log('Member selected on server:', data.member);
+                updateStatus(data.message, 'ready');
+            });
         }
         
         // Initialize microphone access
@@ -528,6 +643,12 @@
         
         // Start conversation
         async function startConversation() {
+            // Check if member is selected
+            if (!selectedMember) {
+                showError('Please select a member before starting the assessment.');
+                return;
+            }
+            
             if (!socket) {
                 initializeSocket();
                 await new Promise(resolve => setTimeout(resolve, 1000));
@@ -833,6 +954,7 @@
         // Initialize when page loads
         document.addEventListener('DOMContentLoaded', function() {
             initializeSocket();
+            loadMembers();
         });
         
         // Cleanup on page unload
@@ -844,6 +966,66 @@
                 socket.disconnect();
             }
         });
+        
+        // Load members on page load
+        async function loadMembers() {
+            try {
+                const response = await fetch('/api/members');
+                membersData = await response.json();
+                displayMembers();
+            } catch (error) {
+                console.error('Error loading members:', error);
+                showError('Failed to load member list');
+            }
+        }
+        
+        // Display members in the table
+        function displayMembers() {
+            const membersTableBody = document.getElementById('membersTableBody');
+            membersTableBody.innerHTML = '';
+            
+            membersData.forEach(member => {
+                const memberRow = document.createElement('tr');
+                memberRow.className = 'member-row';
+                memberRow.onclick = () => selectMember(member);
+                
+                memberRow.innerHTML = `
+                    <td class="member-name-cell">${member.first_name} ${member.last_name}</td>
+                    <td class="member-id-cell">${member.member_id}</td>
+                    <td class="member-dob-cell">${member.DOB}</td>
+                    <td class="member-email-cell">${member.email}</td>
+                    <td class="member-ssn-cell">${member.last4ssn}</td>
+                `;
+                
+                membersTableBody.appendChild(memberRow);
+            });
+        }
+        
+        // Select a member
+        function selectMember(member) {
+            selectedMember = member;
+            
+            // Update UI
+            document.querySelectorAll('.member-row').forEach(row => {
+                row.classList.remove('selected');
+            });
+            event.target.closest('.member-row').classList.add('selected');
+            
+            // Show selected member info
+            document.getElementById('selectedMemberName').textContent = `${member.first_name} ${member.last_name}`;
+            document.getElementById('selectedMemberId').textContent = member.member_id;
+            document.getElementById('selectedMemberInfo').classList.add('show');
+            
+            // Enable start button
+            document.getElementById('startBtn').disabled = false;
+            
+            // Send selection to server
+            if (socket) {
+                socket.emit('select_member', { member_id: member.member_id });
+            }
+            
+            updateStatus(`Member selected: ${member.first_name} ${member.last_name}`, 'ready');
+        }
     </script>
 </body>
 </html>

@@ -21,6 +21,7 @@ RUN pip install --no-cache-dir -r requirements_cloud.txt
 COPY app_cloud.py .
 COPY templates/ templates/
 COPY gcp_key.json .
+COPY members.json .
 
 # Create a non-root user
 RUN useradd -m app
