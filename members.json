@@ -5,7 +5,8 @@
       "last_name": "Johnson",
       "DOB": "1985-03-12",
       "email": "alice.johnson@example.com",
-      "last4ssn": "1234"
+      "last4ssn": "1234",
+      "phone": "+12392233043"
     },
     {
       "member_id": "M002",
@@ -13,7 +14,8 @@
       "last_name": "Smith",
       "DOB": "1990-07-28",
       "email": "bob.smith@example.com",
-      "last4ssn": "5678"
+      "last4ssn": "5678",
+      "phone": "+15551234567"
     },
     {
       "member_id": "M003",
@@ -21,7 +23,8 @@
       "last_name": "Nguyen",
       "DOB": "1978-11-05",
       "email": "clara.nguyen@example.com",
-      "last4ssn": "9012"
+      "last4ssn": "9012",
+      "phone": "+15559876543"
     },
     {
       "member_id": "M004",
@@ -29,7 +32,8 @@
       "last_name": "Lee",
       "DOB": "1995-02-18",
       "email": "david.lee@example.com",
-      "last4ssn": "3456"
+      "last4ssn": "3456",
+      "phone": "+15555551234"
     },
     {
       "member_id": "M005",
@@ -37,7 +41,8 @@
       "last_name": "Martinez",
       "DOB": "1982-09-23",
       "email": "eva.martinez@example.com",
-      "last4ssn": "7890"
+      "last4ssn": "7890",
+      "phone": "+15554567890"
     }
   ]
   

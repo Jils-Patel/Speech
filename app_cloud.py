@@ -11,6 +11,8 @@ from google.cloud import speech_v1 as speech
 from google.cloud import dialogflowcx_v3beta1 as dialogflowcx
 from google.api_core.client_options import ClientOptions
 from google.oauth2 import service_account
+from twilio.rest import Client
+from twilio.twiml.voice_response import VoiceResponse, Connect
 
 load_dotenv()
 
@@ -32,6 +34,17 @@ members_data = load_members()
 # Initialize Google Cloud clients
 tts_client = texttospeech.TextToSpeechClient.from_service_account_json(os.getenv("GCP_KEY_PATH"))
 speech_client = speech.SpeechClient.from_service_account_json(os.getenv("GCP_KEY_PATH"))
+
+# Twilio configuration
+TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
+TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
+TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER")
+DIALOGFLOW_CX_CONNECTOR_NAME = os.getenv("DIALOGFLOW_CX_CONNECTOR_NAME", "smalltalk")
+
+# Initialize Twilio client
+twilio_client = None
+if TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN:
+    twilio_client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
 
 PROJECT_ID = os.getenv("PROJECT_ID")
 AGENT_ID = os.getenv("AGENT_ID")
@@ -59,6 +72,8 @@ class ConversationSession:
         self.audio_count = 0
         self.selected_member = None
         self.first_message_sent = False
+        self.call_sid = None
+        self.call_mode = "web"  # "web" or "phone"
 
 def format_transcript_as_text(transcript_data):
     text_content = ""
@@ -230,6 +245,7 @@ def handle_start_conversation():
         conv.transcript = []
         conv.audio_count = 0
         conv.first_message_sent = False  # Reset first message flag
+        conv.call_mode = "web"  # Set to web mode for microphone conversation
         
         emit('conversation_started', {
             'session_id': session_id,
@@ -393,10 +409,280 @@ def handle_select_member(data):
     else:
         emit('error', {'message': 'Session not found. Please refresh the page.'})
 
+@app.route('/dialogflow-webhook', methods=['POST'])
+def dialogflow_webhook():
+    """Webhook to receive conversation events from Dialogflow CX during phone calls"""
+    try:
+        # Get the webhook request data
+        webhook_request = request.get_json()
+        
+        if not webhook_request:
+            return jsonify({'fulfillmentResponse': {'messages': []}})
+        
+        print(f"Full webhook payload: {webhook_request}")
+        
+        # Extract conversation information
+        session_info = webhook_request.get('sessionInfo', {})
+        session_id = session_info.get('session', '')
+        parameters = session_info.get('parameters', {})
+        
+        # Extract the actual user query text - the 'transcript' field contains user speech
+        query_text = ""
+        agent_response = ""
+        
+        # Primary source: transcript field (this is where user speech appears in phone calls)
+        if 'transcript' in webhook_request:
+            query_text = webhook_request['transcript'].strip()
+        
+        # Fallback: try other possible locations for user input
+        if not query_text:
+            if 'text' in webhook_request:
+                query_text = webhook_request['text']
+            elif 'queryText' in webhook_request:
+                query_text = webhook_request['queryText']
+            elif 'query' in webhook_request:
+                query_text = webhook_request['query']
+            
+            # Try to get from queryResult (this often contains the user's original input)
+            if 'queryResult' in webhook_request:
+                query_result = webhook_request['queryResult']
+                if 'queryText' in query_result:
+                    query_text = query_result['queryText']
+                elif 'text' in query_result:
+                    query_text = query_result['text']
+            
+            # Try to get from originalDetectIntentRequest
+            if 'originalDetectIntentRequest' in webhook_request:
+                original_request = webhook_request['originalDetectIntentRequest']
+                if 'payload' in original_request:
+                    payload = original_request['payload']
+                    if 'query' in payload:
+                        query_text = payload['query']
+                    elif 'text' in payload:
+                        query_text = payload['text']
+            
+            # Try to get from detectIntentRequest
+            if 'detectIntentRequest' in webhook_request:
+                detect_intent = webhook_request['detectIntentRequest']
+                if 'queryInput' in detect_intent:
+                    query_input = detect_intent['queryInput']
+                    if 'text' in query_input:
+                        text_input = query_input['text']
+                        if 'text' in text_input:
+                            query_text = text_input['text']
+        
+        # Try to get from fulfillmentInfo for user input
+        fulfillment_info = webhook_request.get('fulfillmentInfo', {})
+        tag = fulfillment_info.get('tag', '')
+        
+        # Get intent information
+        intent_info = webhook_request.get('intentInfo', {})
+        intent_name = intent_info.get('displayName', 'Unknown Intent')
+        
+        # Get page information
+        page_info = webhook_request.get('pageInfo', {})
+        page_name = page_info.get('displayName', 'Unknown Page')
+        
+        # Try to extract messages from the response
+        messages = []
+        if 'messages' in webhook_request:
+            messages = webhook_request['messages']
+        elif 'fulfillmentResponse' in webhook_request:
+            fulfillment_response = webhook_request['fulfillmentResponse']
+            if 'messages' in fulfillment_response:
+                messages = fulfillment_response['messages']
+        
+        # Extract text from messages
+        for message in messages:
+            if 'text' in message and 'text' in message['text']:
+                agent_response = ' '.join(message['text']['text'])
+                break
+        
+        print(f"Webhook received:")
+        print(f"  Session: {session_id}")
+        print(f"  User Query: '{query_text}'")
+        print(f"  Agent Response: '{agent_response}'")
+        print(f"  Intent: {intent_name}")
+        print(f"  Page: {page_name}")
+        print(f"  Tag: {tag}")
+        print(f"  Parameters: {parameters}")
+        
+        # Find the conversation session that matches this phone call
+        phone_conversation_session = None
+        for conv_session_id, conv in conversations.items():
+            if conv.call_mode == "phone" and conv.is_active:
+                # For phone calls, we'll match based on member parameters or session
+                if (parameters.get('member_id') == conv.selected_member.get('member_id') if conv.selected_member else False):
+                    phone_conversation_session = conv_session_id
+                    break
+                # Fallback: use the most recent active phone conversation
+                phone_conversation_session = conv_session_id
+        
+        # If we found a matching session, broadcast the conversation update
+        if phone_conversation_session:
+            conv = conversations[phone_conversation_session]
+            
+            # If we have user query text, it's a user message
+            if query_text and query_text.strip():
+                print(f"Broadcasting user message: {query_text}")
+                
+                # Check if this is a duplicate (sometimes webhooks fire multiple times)
+                is_duplicate = False
+                if conv.transcript and conv.transcript[-1].get("question") == query_text:
+                    is_duplicate = True
+                
+                if not is_duplicate:
+                    conv.transcript.append({
+                        "question": query_text,
+                        "answer": ""  # Will be filled when agent responds
+                    })
+                    
+                    # Broadcast user message to UI
+                    socketio.emit('phone_transcription_result', {
+                        'text': query_text,
+                        'type': 'user',
+                        'timestamp': time.time()
+                    }, room=phone_conversation_session)
+            
+            # If we have agent response text, it's an agent message
+            if agent_response and agent_response.strip():
+                print(f"Broadcasting agent response: {agent_response}")
+                
+                # Check if this is a duplicate response
+                is_duplicate = False
+                if conv.transcript and conv.transcript[-1].get("answer") == agent_response:
+                    is_duplicate = True
+                
+                if not is_duplicate:
+                    # Update the last transcript entry or create new one
+                    if conv.transcript and not conv.transcript[-1].get("answer"):
+                        conv.transcript[-1]["answer"] = agent_response
+                    else:
+                        # New agent message without user input
+                        conv.transcript.append({
+                            "question": "",
+                            "answer": agent_response
+                        })
+                    
+                    # Broadcast agent response to UI
+                    socketio.emit('phone_agent_response', {
+                        'text': agent_response,
+                        'type': 'agent',
+                        'timestamp': time.time()
+                    }, room=phone_conversation_session)
+            
+            # Update transcript
+            socketio.emit('transcript_updated', {
+                'transcript': conv.transcript
+            }, room=phone_conversation_session)
+        
+        # Return empty fulfillment response to continue normal conversation flow
+        return jsonify({
+            'fulfillmentResponse': {
+                'messages': []
+            }
+        })
+        
+    except Exception as e:
+        print(f"Error in Dialogflow webhook: {e}")
+        import traceback
+        print(f"Full error traceback: {traceback.format_exc()}")
+        
+        # Return empty response to not break the conversation
+        return jsonify({
+            'fulfillmentResponse': {
+                'messages': []
+            }
+        })
+
 @app.route('/api/members')
 def get_members():
     """API endpoint to get list of members"""
     return jsonify(members_data)
+
+def make_outbound_call(member_data):
+    """Make an outbound call to the member using Twilio"""
+    if not twilio_client:
+        print("Twilio client not initialized - missing credentials")
+        return None, "Twilio not configured"
+    
+    if not member_data.get('phone'):
+        print("No phone number found for member")
+        return None, "No phone number for member"
+    
+    try:
+        # Create TwiML to connect to Dialogflow CX
+        response = VoiceResponse()
+        connect = Connect()
+        
+        # Add member parameters to the virtual agent connection
+        virtual_agent = connect.virtual_agent(connector_name=DIALOGFLOW_CX_CONNECTOR_NAME)
+        
+        # You can pass parameters here if your connector supports it
+        # For now, we'll rely on the session parameters in Dialogflow
+        
+        response.append(connect)
+        twiml_content = str(response)
+        
+        print(f"Making call to {member_data['phone']} from {TWILIO_PHONE_NUMBER}")
+        print(f"TwiML: {twiml_content}")
+        
+        # Make the outbound call
+        call = twilio_client.calls.create(
+            to=member_data['phone'],
+            from_=TWILIO_PHONE_NUMBER,
+            twiml=twiml_content
+        )
+        
+        print(f"Call initiated successfully! Call SID: {call.sid}")
+        return call.sid, None
+        
+    except Exception as e:
+        print(f"Error making outbound call: {e}")
+        return None, str(e)
+
+@socketio.on('initiate_call')
+def handle_initiate_call():
+    session_id = request.sid
+    print(f'Initiating call for session: {session_id}')
+    
+    if session_id not in conversations:
+        emit('error', {'message': 'Session not found. Please refresh the page.'})
+        return
+    
+    conv = conversations[session_id]
+    
+    if not conv.selected_member:
+        emit('error', {'message': 'Please select a member before initiating a call.'})
+        return
+    
+    if not conv.selected_member.get('phone'):
+        emit('error', {'message': 'Selected member has no phone number.'})
+        return
+    
+    # Make the outbound call
+    call_sid, error = make_outbound_call(conv.selected_member)
+    
+    if error:
+        emit('error', {'message': f'Failed to initiate call: {error}'})
+        return
+    
+    # Update conversation session
+    conv.call_sid = call_sid
+    conv.call_mode = "phone"
+    conv.is_active = True
+    conv.transcript = []
+    conv.audio_count = 0
+    conv.first_message_sent = False
+    
+    emit('call_initiated', {
+        'call_sid': call_sid,
+        'member_phone': conv.selected_member['phone'],
+        'member_name': f"{conv.selected_member['first_name']} {conv.selected_member['last_name']}",
+        'message': f'Calling {conv.selected_member["first_name"]} at {conv.selected_member["phone"]}...'
+    })
+    
+    print(f"Call initiated for {conv.selected_member['first_name']} {conv.selected_member['last_name']} at {conv.selected_member['phone']}")
 
 if __name__ == '__main__':
     print("Starting health assessment server...")

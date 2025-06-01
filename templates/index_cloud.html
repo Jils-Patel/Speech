@@ -562,6 +562,9 @@
                 <button id="startBtn" class="btn" onclick="startConversation()" disabled>
                     <span>▶</span> Start Assessment
                 </button>
+                <button id="callBtn" class="btn" onclick="initiateCall()" disabled>
+                    <span>📞</span> Call Me
+                </button>
                 <button id="stopBtn" class="btn btn-secondary" onclick="stopConversation()" disabled>
                     <span>⏹</span> Stop Assessment
                 </button>
@@ -620,8 +623,11 @@
     </div>
 
     <div id="permissionRequest" class="permission-request">
-        <strong>🎤 Microphone Access Required</strong><br>
-        Please allow microphone access to continue.
+        <div style="font-size: 18px; margin-bottom: 8px;">🎤 Microphone Access Required</div>
+        <div style="font-size: 14px; opacity: 0.8;">
+            Please allow microphone access to enable voice conversations.<br>
+            Look for the microphone icon in your browser's address bar and click "Allow".
+        </div>
     </div>
     
     <div id="error" class="error"></div>
@@ -745,30 +751,217 @@
                 console.log('Member selected on server:', data.member);
                 updateStatus(data.message, 'ready');
             });
+            
+            socket.on('call_initiated', function(data) {
+                console.log('Call initiated:', data);
+                updateStatus(`Calling ${data.member_name} at ${data.member_phone}...`, 'processing');
+                document.getElementById('callBtn').disabled = true;
+                document.getElementById('startBtn').disabled = true;
+                document.getElementById('stopBtn').disabled = false;
+                document.getElementById('downloadBtn').style.display = 'inline-flex';
+                
+                // Clear conversation area for phone call
+                clearConversation();
+                addSystemMessage(`📞 Calling ${data.member_name} at ${data.member_phone}...`);
+                addSystemMessage('Answer your phone to begin the health assessment.');
+            });
+            
+            socket.on('phone_transcription_result', function(data) {
+                console.log('Phone user message:', data.text);
+                updateStatus('Processing phone conversation...', 'processing');
+                addUserMessage(data.text);
+                conversationTranscript.push({
+                    type: 'user',
+                    text: data.text,
+                    timestamp: new Date().toLocaleTimeString()
+                });
+            });
+            
+            socket.on('phone_agent_response', function(data) {
+                console.log('Phone agent response:', data.text);
+                updateStatus('Phone conversation active', 'listening');
+                addAgentMessage(data.text);
+                conversationTranscript.push({
+                    type: 'agent',
+                    text: data.text,
+                    timestamp: new Date().toLocaleTimeString()
+                });
+            });
         }
         
         // Initialize microphone access
         async function initializeMicrophone() {
             try {
-                document.getElementById('permissionRequest').style.display = 'block';
+                // Check if we already have a stream
+                if (audioStream && audioStream.active) {
+                    console.log('Microphone already initialized');
+                    return true;
+                }
                 
-                audioStream = await navigator.mediaDevices.getUserMedia({
-                    audio: {
+                // Clean up any existing stream first
+                if (audioStream) {
+                    audioStream.getTracks().forEach(track => track.stop());
+                    audioStream = null;
+                }
+                
+                document.getElementById('permissionRequest').style.display = 'block';
+                updateStatus('Requesting microphone access...', 'processing');
+                
+                // Try with different audio constraints if the first attempt fails
+                const audioConstraints = [
+                    {
                         sampleRate: 16000,
                         channelCount: 1,
                         echoCancellation: true,
                         noiseSuppression: true,
                         autoGainControl: true
-                    }
-                });
+                    },
+                    {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true
+                    },
+                    {
+                        echoCancellation: false,
+                        noiseSuppression: false,
+                        autoGainControl: false
+                    },
+                    true // Basic audio constraint
+                ];
                 
-                document.getElementById('permissionRequest').style.display = 'none';
-                updateStatus('Microphone ready', 'ready');
-                return true;
+                let lastError = null;
+                for (let i = 0; i < audioConstraints.length; i++) {
+                    try {
+                        console.log(`Trying audio constraint ${i + 1}:`, audioConstraints[i]);
+                        audioStream = await navigator.mediaDevices.getUserMedia({
+                            audio: audioConstraints[i]
+                        });
+                        
+                        document.getElementById('permissionRequest').style.display = 'none';
+                        updateStatus('Microphone ready', 'ready');
+                        console.log('Microphone access granted successfully with constraint', i + 1);
+                        return true;
+                        
+                    } catch (error) {
+                        console.log(`Audio constraint ${i + 1} failed:`, error);
+                        lastError = error;
+                        
+                        // Clean up failed stream
+                        if (audioStream) {
+                            audioStream.getTracks().forEach(track => track.stop());
+                            audioStream = null;
+                        }
+                        
+                        // Continue to next constraint
+                        continue;
+                    }
+                }
+                
+                // If we get here, all constraints failed
+                throw lastError;
                 
             } catch (error) {
                 console.error('Microphone access denied:', error);
-                showError('Microphone access is required for voice assessment. Please allow microphone access and refresh the page.');
+                document.getElementById('permissionRequest').style.display = 'none';
+                
+                let errorMessage = 'Microphone access is required for voice assessment.';
+                let suggestions = '';
+                
+                if (error.name === 'NotAllowedError') {
+                    errorMessage = 'Microphone access was denied.';
+                    suggestions = 'Please click the microphone icon in your browser\'s address bar and allow access, then try again.';
+                } else if (error.name === 'NotFoundError') {
+                    errorMessage = 'No microphone found.';
+                    suggestions = 'Please connect a microphone and refresh the page.';
+                } else if (error.name === 'NotReadableError') {
+                    errorMessage = 'Microphone is not available (Hardware/System Issue)';
+                    suggestions = `This error means your microphone cannot be accessed. Try these steps in order:
+                    
+<strong>1. Check if another app is using your microphone:</strong>
+• Close Zoom, Teams, Discord, Skype, OBS, or any recording software
+• Close other browser tabs that might be using the microphone
+• Check Windows Task Manager for apps using audio devices
+
+<strong>2. Check Windows microphone settings:</strong>
+• Go to Settings > Privacy & Security > Microphone
+• Make sure "Microphone access" is turned ON
+• Make sure "Let apps access your microphone" is turned ON
+• Make sure your browser (Chrome/Edge) has microphone permission
+
+<strong>3. Check your microphone hardware:</strong>
+• Unplug and reconnect your microphone (if USB)
+• Try a different USB port
+• Check if your microphone works in other apps (like Voice Recorder)
+
+<strong>4. Browser troubleshooting:</strong>
+• Refresh this page (F5)
+• Restart your browser completely
+• Clear browser cache and cookies
+• Try in an incognito/private window
+
+<strong>5. System troubleshooting:</strong>
+• Restart your computer
+• Update your audio drivers
+• Check Windows Sound settings (right-click speaker icon)
+
+If none of these work, try the phone call option instead - it doesn't require browser microphone access.`;
+                } else if (error.name === 'OverconstrainedError') {
+                    errorMessage = 'Microphone constraints not supported.';
+                    suggestions = 'Your microphone doesn\'t support the required audio settings. Try refreshing the page.';
+                } else {
+                    errorMessage = `Microphone error: ${error.message}`;
+                    suggestions = 'Try refreshing the page or restarting your browser.';
+                }
+                
+                showError(`${errorMessage}\n\n${suggestions}`);
+                updateStatus('Microphone access required', '');
+                return false;
+            }
+        }
+        
+        // Check microphone permission status
+        async function checkMicrophonePermission() {
+            try {
+                const permissionStatus = await navigator.permissions.query({ name: 'microphone' });
+                console.log('Microphone permission status:', permissionStatus.state);
+                
+                // Also list available audio devices for debugging
+                try {
+                    const devices = await navigator.mediaDevices.enumerateDevices();
+                    const audioInputs = devices.filter(device => device.kind === 'audioinput');
+                    console.log('Available audio input devices:', audioInputs);
+                    console.log('Total devices found:', devices.length);
+                    console.log('Audio input devices found:', audioInputs.length);
+                    
+                    // Log device details
+                    audioInputs.forEach((device, index) => {
+                        console.log(`Audio device ${index + 1}:`, {
+                            deviceId: device.deviceId,
+                            label: device.label,
+                            groupId: device.groupId
+                        });
+                    });
+                    
+                    if (audioInputs.length === 0) {
+                        console.warn('No audio input devices found');
+                        showError('No microphone devices found. Please connect a microphone and refresh the page.');
+                        return false;
+                    }
+                } catch (deviceError) {
+                    console.warn('Could not enumerate devices:', deviceError);
+                }
+                
+                if (permissionStatus.state === 'granted') {
+                    // Try to get the stream if permission is already granted
+                    return await initializeMicrophone();
+                } else if (permissionStatus.state === 'denied') {
+                    showError('Microphone access was previously denied.<br><br>Please click the microphone icon in your browser\'s address bar and allow access.');
+                    return false;
+                }
+                
+                return false;
+            } catch (error) {
+                console.log('Permission API not supported, will request directly');
                 return false;
             }
         }
@@ -786,9 +979,19 @@
                 await new Promise(resolve => setTimeout(resolve, 1000));
             }
             
-            const micAllowed = await initializeMicrophone();
-            if (!micAllowed) return;
+            // First check if we already have permission
+            let micAllowed = await checkMicrophonePermission();
             
+            // If not, request permission
+            if (!micAllowed) {
+                micAllowed = await initializeMicrophone();
+            }
+            
+            if (!micAllowed) {
+                return;
+            }
+            
+            // Start the conversation
             socket.emit('start_conversation');
         }
         
@@ -1076,17 +1279,68 @@
         // Show error message
         function showError(message) {
             const errorEl = document.getElementById('error');
-            errorEl.textContent = message;
+            
+            // Handle multi-line messages
+            const formattedMessage = message.replace(/\n/g, '<br>');
+            
+            // Check if this is a microphone error and suggest phone alternative
+            const isPhoneCallAvailable = selectedMember && selectedMember.phone;
+            const phoneCallSuggestion = isPhoneCallAvailable ? 
+                `<div style="margin-top: 15px; padding: 12px; background: rgba(120, 190, 32, 0.1); border: 1px solid #78BE20; border-radius: 6px;">
+                    <strong>💡 Alternative:</strong> You can use the <strong>"Call Me"</strong> button instead - it doesn't require browser microphone access!
+                </div>` : '';
+            
+            errorEl.innerHTML = `
+                <div style="margin-bottom: 15px;">${formattedMessage}</div>
+                ${phoneCallSuggestion}
+                <div style="margin-top: 15px;">
+                    <button onclick="retryMicrophone()" style="background: #dc2626; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 14px; margin-right: 10px;">
+                        🔄 Retry Microphone Access
+                    </button>
+                    <button onclick="document.getElementById('error').style.display='none'" style="background: #6b7280; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 14px;">
+                        ✕ Close
+                    </button>
+                </div>
+            `;
             errorEl.style.display = 'block';
+            
+            // Auto-hide after 15 seconds for microphone errors (longer than other errors)
             setTimeout(() => {
-                errorEl.style.display = 'none';
-            }, 5000);
+                if (errorEl.style.display === 'block') {
+                    errorEl.style.display = 'none';
+                }
+            }, 15000);
+        }
+        
+        // Retry microphone access
+        async function retryMicrophone() {
+            document.getElementById('error').style.display = 'none';
+            updateStatus('Retrying microphone access...', 'processing');
+            
+            // Clean up any existing stream
+            if (audioStream) {
+                audioStream.getTracks().forEach(track => track.stop());
+                audioStream = null;
+            }
+            
+            // Wait a moment then try again
+            setTimeout(async () => {
+                const success = await initializeMicrophone();
+                if (success) {
+                    updateStatus('Microphone ready - you can now start the assessment', 'ready');
+                }
+            }, 500);
         }
         
         // Initialize when page loads
         document.addEventListener('DOMContentLoaded', function() {
             initializeSocket();
             loadMembers();
+            
+            // Check microphone permission early
+            setTimeout(async () => {
+                await checkMicrophonePermission();
+            }, 1000);
         });
         
         // Cleanup on page unload
@@ -1148,15 +1402,62 @@
             document.getElementById('selectedMemberId').textContent = member.member_id;
             document.getElementById('selectedMemberInfo').classList.add('show');
             
-            // Enable start button
+            // Enable both start and call buttons
             document.getElementById('startBtn').disabled = false;
+            document.getElementById('callBtn').disabled = false;
             
             // Send selection to server
             if (socket) {
                 socket.emit('select_member', { member_id: member.member_id });
             }
             
-            updateStatus(`Member selected: ${member.first_name} ${member.last_name}`, 'ready');
+            updateStatus(`Member selected: ${member.first_name} ${member.last_name} (${member.phone})`, 'ready');
+        }
+        
+        // Initiate phone call
+        function initiateCall() {
+            // Check if member is selected
+            if (!selectedMember) {
+                showError('Please select a member before initiating a call.');
+                return;
+            }
+            
+            if (!selectedMember.phone) {
+                showError('Selected member has no phone number.');
+                return;
+            }
+            
+            if (!socket) {
+                initializeSocket();
+                setTimeout(() => {
+                    socket.emit('initiate_call');
+                }, 1000);
+            } else {
+                socket.emit('initiate_call');
+            }
+        }
+        
+        // Add system message to conversation
+        function addSystemMessage(text) {
+            const conversationArea = document.getElementById('conversationArea');
+            
+            // Remove empty state
+            const emptyState = conversationArea.querySelector('.empty-state');
+            if (emptyState) {
+                emptyState.remove();
+            }
+            
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message system';
+            messageDiv.innerHTML = `
+                <div class="message-bubble" style="background: #f3f4f6; color: #374151; border: 1px solid #d1d5db; max-width: 100%; text-align: center;">
+                    ${text}
+                    <div class="message-time">${new Date().toLocaleTimeString()}</div>
+                </div>
+            `;
+            
+            conversationArea.appendChild(messageDiv);
+            conversationArea.scrollTop = conversationArea.scrollHeight;
         }
     </script>
 </body>

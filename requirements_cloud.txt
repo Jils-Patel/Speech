@@ -7,4 +7,5 @@ google-cloud-dialogflow-cx==1.27.0
 flask-socketio==5.3.6
 python-socketio[client]==5.10.0
 eventlet==0.33.3
-gunicorn==21.2.0 
+gunicorn==21.2.0
+twilio==8.10.0 
