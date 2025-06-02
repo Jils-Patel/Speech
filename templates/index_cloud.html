@@ -44,7 +44,7 @@
             display: flex;
             align-items: center;
             gap: 15px;
-            margin-left: 30px;
+            margin-left: -160px;
         }
         
         .app-title h1 {
@@ -63,29 +63,230 @@
             display: flex;
             align-items: center;
             gap: 15px;
-            margin-right: 30px;
+            margin-right: -160px;
         }
         
         .main-content {
             flex: 1;
             display: flex;
             flex-direction: column;
-            max-width: 1400px;
+            max-width: 1800px;
             margin: 0 auto;
             width: 100%;
             min-height: calc(100vh - 80px);
+            gap: 20px;
+            padding: 20px 10px;
         }
         
-        .conversation-section {
+        .top-section {
+            display: flex;
+            gap: 20px;
+            height: 50vh;
+            min-height: 400px;
+        }
+        
+        .member-info-panel {
+            width: 40%;
             background: white;
-            margin: 20px;
+            border-radius: 16px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+            display: none;
+        }
+        
+        .member-info-panel.show {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .conversation-panel {
+            width: 60%;
+            background: white;
             border-radius: 16px;
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
             overflow: hidden;
             display: flex;
             flex-direction: column;
-            height: 50vh;
-            min-height: 500px;
+        }
+        
+        .member-info-panel.show + .conversation-panel {
+            width: 60%;
+        }
+        
+        .member-info-panel:not(.show) + .conversation-panel {
+            width: 100%;
+        }
+        
+        .bottom-section {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+            flex: 1;
+            min-height: 300px;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .members-table-header {
+            background: #fafafa;
+            padding: 20px 30px;
+            border-bottom: 1px solid #e5e7eb;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .members-table-header h3 {
+            margin: 0;
+            color: #333;
+            font-size: 18px;
+            font-weight: 600;
+        }
+        
+        .members-table-container {
+            flex: 1;
+            overflow-y: auto;
+        }
+        
+        .members-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        .members-table th {
+            background: #f8f9fa;
+            padding: 16px 20px;
+            text-align: left;
+            font-weight: 600;
+            color: #374151;
+            border-bottom: 2px solid #e5e7eb;
+            font-size: 14px;
+            position: sticky;
+            top: 0;
+            z-index: 5;
+        }
+        
+        .members-table th:nth-child(1) { width: 25%; } /* Member */
+        .members-table th:nth-child(2) { width: 12%; } /* DOB */
+        .members-table th:nth-child(3) { width: 15%; } /* Phone */
+        .members-table th:nth-child(4) { width: 18%; } /* Plan */
+        .members-table th:nth-child(5) { width: 12%; } /* Status */
+        .members-table th:nth-child(6) { width: 18%; text-align: center; } /* Actions */
+        
+        .member-row {
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border-bottom: 1px solid #f3f4f6;
+        }
+        
+        .member-row:hover {
+            background: linear-gradient(135deg, #f0f8e8, #e8f5e8);
+        }
+        
+        .member-row.selected {
+            background: linear-gradient(135deg, #e8f5e8, #d4f0d4);
+            border-left: 4px solid #78BE20;
+        }
+        
+        .member-row td {
+            padding: 16px 20px;
+            font-size: 14px;
+            color: #374151;
+            vertical-align: middle;
+        }
+        
+        .member-name-cell {
+            font-weight: 600;
+            color: #1f2937;
+        }
+        
+        .member-status-cell .member-status {
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        
+        .member-actions-cell {
+            text-align: center;
+        }
+        
+        .member-actions-cell .member-actions {
+            display: flex;
+            gap: 6px;
+            justify-content: center;
+            flex-wrap: wrap;
+            opacity: 1 !important; /* Always visible in table */
+        }
+        
+        .action-icon-btn {
+            background: white !important;
+            border: 2px solid #e5e7eb !important;
+            padding: 8px !important;
+            border-radius: 6px !important;
+            cursor: pointer;
+            font-size: 14px !important;
+            font-weight: 600 !important;
+            transition: all 0.2s ease;
+            display: inline-flex !important;
+            align-items: center;
+            justify-content: center;
+            min-width: 36px !important;
+            height: 36px !important;
+            position: relative;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1) !important;
+            margin: 0 2px;
+        }
+        
+        .action-icon-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15) !important;
+            border-color: currentColor !important;
+        }
+        
+        .action-icon-btn.start {
+            color: #10b981 !important; /* Green for start/mic */
+        }
+        
+        .action-icon-btn.start:hover {
+            color: #059669 !important;
+        }
+        
+        .action-icon-btn.call {
+            color: #10b981 !important; /* Green for call/phone */
+        }
+        
+        .action-icon-btn.call:hover {
+            color: #059669 !important;
+        }
+        
+        .action-icon-btn.log {
+            color: #10b981 !important; /* Green for log/transcript */
+        }
+        
+        .action-icon-btn.log:hover {
+            color: #059669 !important;
+        }
+        
+        .action-icon-btn.stop {
+            color: #10b981 !important; /* Green for stop */
+        }
+        
+        .action-icon-btn.stop:hover {
+            color: #059669 !important;
+        }
+        
+        /* Force transcript icon to be green */
+        .action-icon-btn.log {
+            color: #10b981 !important;
+            filter: none !important;
+        }
+        
+        .conversation-section {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
         }
         
         .conversation-header {
@@ -279,117 +480,361 @@
             margin-bottom: 20px;
         }
         
-        .member-selection-section {
+        .member-cards-section {
             background: white;
-            margin: 0 20px 20px 20px;
             border-radius: 16px;
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
             overflow: hidden;
-            display: flex;
-            flex-direction: column;
-            height: 40vh;
-            min-height: 350px;
+            flex: 1;
+            min-height: 300px;
         }
         
-        .member-selection-header {
+        .member-cards-header {
             background: #fafafa;
             padding: 20px 30px;
             border-bottom: 1px solid #e5e7eb;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            flex-shrink: 0;
         }
         
-        .member-selection-header h3 {
+        .member-cards-header h3 {
             margin: 0;
             color: #333;
             font-size: 18px;
             font-weight: 600;
         }
         
-        .selected-member-info {
-            background: linear-gradient(135deg, #e8f5e8, #f0f8e8);
-            border: 1px solid #78BE20;
-            border-radius: 8px;
-            padding: 12px 16px;
-            font-size: 14px;
-            color: #2d5016;
-            display: none;
-        }
-        
-        .selected-member-info.show {
-            display: block;
-        }
-        
-        .members-container {
-            flex: 1;
+        .member-cards-container {
+            padding: 20px;
             overflow-y: auto;
+            max-height: 400px;
         }
         
-        .members-container::-webkit-scrollbar {
-            width: 6px;
-        }
-        
-        .members-container::-webkit-scrollbar-track {
-            background: #f1f1f1;
-        }
-        
-        .members-container::-webkit-scrollbar-thumb {
-            background: #c1c1c1;
-            border-radius: 3px;
-        }
-        
-        .members-table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-        
-        .members-table th {
-            background: #f8f9fa;
-            padding: 16px 24px;
-            text-align: left;
-            font-weight: 600;
-            color: #374151;
-            border-bottom: 2px solid #e5e7eb;
-            font-size: 14px;
-            position: sticky;
-            top: 0;
-            z-index: 5;
-        }
-        
-        .member-row {
+        .member-card {
+            background: white;
+            border: 2px solid #f3f4f6;
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 12px;
             cursor: pointer;
-            transition: all 0.2s ease;
-            border-bottom: 1px solid #f3f4f6;
+            transition: all 0.3s ease;
+            position: relative;
         }
         
-        .member-row:hover {
+        .member-card:hover {
+            border-color: #78BE20;
+            box-shadow: 0 4px 12px rgba(120, 190, 32, 0.1);
+            transform: translateY(-2px);
+        }
+        
+        .member-card.selected {
+            border-color: #78BE20;
             background: linear-gradient(135deg, #f0f8e8, #e8f5e8);
+            box-shadow: 0 6px 20px rgba(120, 190, 32, 0.2);
         }
         
-        .member-row.selected {
-            background: linear-gradient(135deg, #e8f5e8, #d4f0d4);
-            border-left: 4px solid #78BE20;
+        .member-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
         }
         
-        .member-row td {
-            padding: 16px 24px;
-            font-size: 14px;
-            color: #374151;
-        }
-        
-        .member-name-cell {
+        .member-name {
+            font-size: 16px;
             font-weight: 600;
             color: #1f2937;
         }
         
-        .member-id-cell {
-            color: #9ca3af;
+        .member-status {
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 500;
         }
         
-        .member-dob-cell {
-            color: #9ca3af;
+        .member-status.active {
+            background: #d1fae5;
+            color: #065f46;
+        }
+        
+        .member-status.inactive {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+        
+        .member-status.pending {
+            background: #fef3c7;
+            color: #92400e;
+        }
+        
+        .member-card-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 14px;
+            color: #6b7280;
+            margin-bottom: 12px;
+        }
+        
+        .member-actions {
+            display: flex;
+            gap: 8px;
+            justify-content: center;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        
+        .member-card:hover .member-actions,
+        .member-card.selected .member-actions {
+            opacity: 1;
+        }
+        
+        .action-btn {
+            background: #78BE20;
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        
+        .action-btn:hover {
+            background: #5C9A1B;
+            transform: translateY(-1px);
+        }
+        
+        .action-btn.secondary {
+            background: #6b7280;
+        }
+        
+        .action-btn.secondary:hover {
+            background: #4b5563;
+        }
+        
+        .action-btn.danger {
+            background: #dc2626;
+        }
+        
+        .action-btn.danger:hover {
+            background: #b91c1c;
+        }
+        
+        .member-detail-section {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+            height: 300px;
+            display: none;
+        }
+        
+        .member-detail-section.show {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .member-detail-header {
+            background: linear-gradient(135deg, #78BE20, #5C9A1B);
+            color: white;
+            padding: 20px 30px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .member-avatar {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+        }
+        
+        .member-detail-info {
+            flex: 1;
+        }
+        
+        .member-detail-name {
+            font-size: 20px;
+            font-weight: 600;
+            margin: 0;
+        }
+        
+        .member-detail-id {
+            font-size: 14px;
+            opacity: 0.9;
+            margin: 4px 0 0 0;
+        }
+        
+        .member-detail-content {
+            padding: 20px 30px;
+            overflow-y: auto;
+            flex: 1;
+        }
+        
+        .detail-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #f3f4f6;
+        }
+        
+        .detail-row:last-child {
+            border-bottom: none;
+        }
+        
+        .detail-label {
+            font-weight: 500;
+            color: #6b7280;
+            font-size: 14px;
+        }
+        
+        .detail-value {
+            color: #1f2937;
+            font-size: 14px;
+            text-align: right;
+        }
+        
+        /* Responsive design */
+        @media (max-width: 768px) {
+            .app-header {
+                padding: 15px 20px;
+            }
+            
+            .header-content {
+                flex-direction: column;
+                gap: 15px;
+                text-align: center;
+            }
+            
+            .app-title h1 {
+                font-size: 24px;
+            }
+            
+            .main-content {
+                padding: 10px;
+                gap: 10px;
+            }
+            
+            .top-section {
+                flex-direction: column;
+                height: auto;
+                min-height: auto;
+            }
+            
+            .member-info-panel,
+            .conversation-panel {
+                width: 100% !important;
+            }
+            
+            .member-info-panel {
+                height: 250px;
+            }
+            
+            .conversation-panel {
+                height: 40vh;
+                min-height: 300px;
+            }
+            
+            .bottom-section {
+                min-height: 200px;
+            }
+            
+            .header-controls {
+                flex-direction: column;
+                width: 100%;
+                gap: 10px;
+            }
+            
+            .btn {
+                width: 100%;
+                justify-content: center;
+            }
+            
+            .message-bubble {
+                max-width: 85%;
+                font-size: 14px;
+                padding: 16px 20px;
+            }
+            
+            .conversation-area {
+                padding: 20px;
+            }
+            
+            .members-table th,
+            .member-row td {
+                padding: 12px 8px;
+                font-size: 13px;
+            }
+            
+            .member-actions {
+                gap: 4px;
+            }
+            
+            .action-icon-btn {
+                width: 28px;
+                height: 28px;
+                font-size: 12px;
+            }
+            
+            .member-info-header {
+                padding: 15px 20px;
+            }
+            
+            .member-info-content {
+                padding: 15px 20px;
+            }
+        }
+        
+        /* Member info panel styles */
+        .member-info-header {
+            background: linear-gradient(135deg, #78BE20, #5C9A1B);
+            color: white;
+            padding: 20px 30px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .member-avatar {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 28px;
+            font-weight: bold;
+        }
+        
+        .member-info-content {
+            padding: 20px 30px;
+            overflow-y: auto;
+            flex: 1;
+        }
+        
+        .member-info-name {
+            font-size: 20px;
+            font-weight: 600;
+            margin: 0;
+        }
+        
+        .member-info-id {
+            font-size: 14px;
+            opacity: 0.9;
+            margin: 4px 0 0 0;
         }
         
         .btn {
@@ -485,68 +930,6 @@
             0%, 60%, 100% { transform: translateY(0); }
             30% { transform: translateY(-8px); }
         }
-        
-        /* Responsive design */
-        @media (max-width: 768px) {
-            .app-header {
-                padding: 15px 20px;
-            }
-            
-            .header-content {
-                flex-direction: column;
-                gap: 15px;
-                text-align: center;
-            }
-            
-            .app-title h1 {
-                font-size: 24px;
-            }
-            
-            .main-content {
-                margin: 0;
-                height: calc(100vh - 120px);
-            }
-            
-            .conversation-section,
-            .member-selection-section {
-                margin: 10px;
-                border-radius: 12px;
-            }
-            
-            .conversation-header,
-            .member-selection-header {
-                padding: 15px 20px;
-                flex-direction: column;
-                gap: 15px;
-            }
-            
-            .header-controls {
-                flex-direction: column;
-                width: 100%;
-                gap: 10px;
-            }
-            
-            .btn {
-                width: 100%;
-                justify-content: center;
-            }
-            
-            .message-bubble {
-                max-width: 85%;
-                font-size: 14px;
-                padding: 16px 20px;
-            }
-            
-            .conversation-area {
-                padding: 20px;
-            }
-            
-            .members-table th,
-            .member-row td {
-                padding: 12px 16px;
-                font-size: 13px;
-            }
-        }
     </style>
 </head>
 <body>
@@ -571,51 +954,71 @@
                 <button id="downloadBtn" class="btn btn-secondary" onclick="downloadTranscript()" style="display: none;">
                     <span>📥</span> Download Transcript
                 </button>
+                <a href="/logout" class="btn btn-secondary" style="text-decoration: none; margin-left: 20px;">
+                    <span>🚪</span> Logout
+                </a>
             </div>
         </div>
     </div>
 
     <div class="main-content">
-        <div class="conversation-section">
-            <div class="conversation-header">
-                <div class="status-section">
-                    <div id="status" class="status ready">
-                        <div class="status-indicator"></div>
-                        <span>Ready to begin your health assessment</span>
+        <div class="top-section">
+            <div class="member-info-panel" id="memberInfoPanel">
+                <div class="member-info-header">
+                    <div class="member-avatar" id="memberAvatar" style="font-size: 28px; font-weight: bold;">?</div>
+                    <div class="member-detail-info">
+                        <h2 class="member-info-name" id="memberInfoName">Select a Member</h2>
+                        <p class="member-info-id" id="memberInfoId">No member selected</p>
                     </div>
                 </div>
-                <div class="audio-visualizer" id="audioVisualizer">
-                    Select a member to begin
+                <div class="member-info-content" id="memberInfoContent">
+                    <div style="text-align: center; color: #9ca3af; padding: 40px 20px;">
+                        Select a member from the table below to view details
+                    </div>
                 </div>
             </div>
             
-            <div class="conversation-area" id="conversationArea">
-                <div class="empty-state">
-                    Start a conversation to see messages here
+            <div class="conversation-panel">
+                <div class="conversation-section">
+                    <div class="conversation-header">
+                        <div class="status-section">
+                            <div id="status" class="status ready">
+                                <div class="status-indicator"></div>
+                                <span>Ready to begin your health assessment</span>
+                            </div>
+                        </div>
+                        <div class="audio-visualizer" id="audioVisualizer">
+                            Select a member to begin
+                        </div>
+                    </div>
+                    
+                    <div class="conversation-area" id="conversationArea">
+                        <div class="empty-state">
+                            Start a conversation to see messages here
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
-
-        <div class="member-selection-section">
-            <div class="member-selection-header">
-                <div class="selected-member-info" id="selectedMemberInfo">
-                    <strong>Selected:</strong> <span id="selectedMemberName"></span>
-                    <br><small>ID: <span id="selectedMemberId"></span></small>
-                </div>
+        
+        <div class="bottom-section">
+            <div class="members-table-header">
+                <h3>Members</h3>
             </div>
-            <div class="members-container">
-                <table class="members-table" id="membersTable">
+            <div class="members-table-container">
+                <table class="members-table">
                     <thead>
                         <tr>
                             <th>Name</th>
-                            <th>ID</th>
                             <th>DOB</th>
-                            <th>Email</th>
-                            <th>Last4SSN</th>
+                            <th>Phone</th>
+                            <th>Plan</th>
+                            <th>Status</th>
+                            <th>Actions</th>
                         </tr>
                     </thead>
                     <tbody id="membersTableBody">
-                        <!-- Members will be loaded here -->
+                        <!-- Member rows will be dynamically added here -->
                     </tbody>
                 </table>
             </div>
@@ -715,7 +1118,7 @@
                                 if (isConversationActive) {
                                     startListening();
                                 }
-                            }, 1000); // 2 second delay before starting to listen
+                            }, 1000);
                         }
                     });
                 }, 1000);
@@ -763,7 +1166,6 @@
                 // Clear conversation area for phone call
                 clearConversation();
                 addSystemMessage(`📞 Calling ${data.member_name} at ${data.member_phone}...`);
-                addSystemMessage('Answer your phone to begin the health assessment.');
             });
             
             socket.on('phone_transcription_result', function(data) {
@@ -1355,54 +1757,240 @@ If none of these work, try the phone call option instead - it doesn't require br
         
         // Load members on page load
         async function loadMembers() {
+            console.log('loadMembers function called');
             try {
+                console.log('Fetching members from /api/members');
                 const response = await fetch('/api/members');
+                console.log('Response received:', response);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
                 membersData = await response.json();
+                console.log('Members data loaded:', membersData);
+                console.log('Number of members:', membersData.length);
+                
                 displayMembers();
             } catch (error) {
                 console.error('Error loading members:', error);
-                showError('Failed to load member list');
+                showError('Failed to load member list: ' + error.message);
             }
         }
         
-        // Display members in the table
+        // Display members in table
         function displayMembers() {
+            console.log('displayMembers function called');
             const membersTableBody = document.getElementById('membersTableBody');
+            console.log('membersTableBody element:', membersTableBody);
+            console.log('membersData:', membersData);
+            
+            if (!membersTableBody) {
+                console.error('membersTableBody element not found!');
+                return;
+            }
+            
             membersTableBody.innerHTML = '';
             
-            membersData.forEach(member => {
+            if (!membersData || membersData.length === 0) {
+                console.error('No members data available!');
+                return;
+            }
+            
+            membersData.forEach((member, index) => {
+                console.log(`Creating row for member ${index}:`, member);
                 const memberRow = document.createElement('tr');
                 memberRow.className = 'member-row';
-                memberRow.onclick = () => selectMember(member);
+                memberRow.onclick = (event) => {
+                    selectMember(member, event.currentTarget);
+                };
                 
+                const statusClass = member.coverage_status.toLowerCase();
+                const statusText = member.coverage_status;
+                
+                // Format phone number for display
+                const formattedPhone = member.phone.replace(/(\+1)(\d{3})(\d{3})(\d{4})/, '$1 ($2) $3-$4');
+                
+                // Format DOB for display
+                const formattedDOB = new Date(member.DOB).toLocaleDateString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                    year: 'numeric'
+                });
+                
+                console.log('About to set innerHTML for member row');
                 memberRow.innerHTML = `
-                    <td class="member-name-cell">${member.first_name} ${member.last_name}</td>
-                    <td class="member-id-cell">${member.member_id}</td>
-                    <td class="member-dob-cell">${member.DOB}</td>
-                    <td class="member-email-cell">${member.email}</td>
-                    <td class="member-ssn-cell">${member.last4ssn}</td>
+                    <td class="member-name-cell">
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <span style="font-size: 18px; font-weight: bold; color: #6b7280; width: 20px; text-align: center;">${member.gender === 'Female' ? '👩' : '👨'}</span>
+                            <div>
+                                <div style="font-weight: 600;">${member.first_name} ${member.last_name}</div>
+                                <div style="font-size: 12px; color: #6b7280;">ID: ${member.member_id}</div>
+                            </div>
+                        </div>
+                    </td>
+                    <td style="color: #6b7280; font-size: 13px;">
+                        ${formattedDOB}
+                    </td>
+                    <td style="color: #6b7280; font-size: 13px;">
+                        ${formattedPhone}
+                    </td>
+                    <td style="color: #374151; font-size: 13px; font-weight: 500;">
+                        ${member.insurance_plan}
+                    </td>
+                    <td class="member-status-cell">
+                        <span class="member-status ${statusClass}">${statusText}</span>
+                    </td>
+                    <td class="member-actions-cell">
+                        <div class="member-actions">
+                            <button class="action-icon-btn start" onclick="event.stopPropagation(); startAssessmentForMember('${member.member_id}')" title="Start Assessment">
+                                ▶
+                            </button>
+                            <button class="action-icon-btn call" onclick="event.stopPropagation(); callMember('${member.member_id}')" title="Call Member">
+                                ☎
+                            </button>
+                            <button class="action-icon-btn log" onclick="event.stopPropagation(); viewTranscript('${member.member_id}')" title="View Transcript">
+                                ⎘
+                            </button>
+                            <button class="action-icon-btn stop" onclick="event.stopPropagation(); stopAssessmentForMember('${member.member_id}')" title="Stop Assessment">
+                                ⏹
+                            </button>
+                        </div>
+                    </td>
                 `;
                 
+                console.log('About to append member row to table body');
                 membersTableBody.appendChild(memberRow);
+                console.log('Member row appended successfully');
             });
+            
+            console.log('displayMembers function completed');
+            
+            // Auto-select the first member if available
+            if (membersData && membersData.length > 0 && !selectedMember) {
+                console.log('Auto-selecting first member:', membersData[0]);
+                // Use a longer timeout to ensure DOM is fully rendered
+                setTimeout(() => {
+                    selectMember(membersData[0]);
+                    console.log('First member auto-selected successfully');
+                }, 200);
+            }
         }
         
-        // Select a member
-        function selectMember(member) {
+        // Select a member and show detailed view
+        function selectMember(member, clickedRow = null) {
             selectedMember = member;
             
-            // Update UI
+            // Update table row selection
             document.querySelectorAll('.member-row').forEach(row => {
                 row.classList.remove('selected');
             });
-            event.target.closest('.member-row').classList.add('selected');
             
-            // Show selected member info
-            document.getElementById('selectedMemberName').textContent = `${member.first_name} ${member.last_name}`;
-            document.getElementById('selectedMemberId').textContent = member.member_id;
-            document.getElementById('selectedMemberInfo').classList.add('show');
+            // If called from a click event, use the clicked row
+            if (clickedRow) {
+                clickedRow.classList.add('selected');
+            } else {
+                // If called programmatically, find the row by member ID
+                const targetRow = Array.from(document.querySelectorAll('.member-row')).find(row => {
+                    const memberIdElement = row.querySelector('[style*="ID:"]');
+                    return memberIdElement && memberIdElement.textContent.includes(member.member_id);
+                });
+                if (targetRow) {
+                    targetRow.classList.add('selected');
+                }
+            }
             
-            // Enable both start and call buttons
+            // Show member info panel
+            const memberInfoPanel = document.getElementById('memberInfoPanel');
+            memberInfoPanel.classList.add('show');
+            
+            // Set gender-specific avatar
+            const memberAvatar = document.getElementById('memberAvatar');
+            memberAvatar.textContent = member.gender === 'Female' ? '👩' : '👨';
+            memberAvatar.style.fontSize = '28px';
+            memberAvatar.style.fontWeight = 'bold';
+            
+            // Update member info header
+            document.getElementById('memberInfoName').textContent = `${member.first_name} ${member.last_name}`;
+            document.getElementById('memberInfoId').textContent = `ID: ${member.member_id}`;
+            
+            // Update member info content
+            const memberInfoContent = document.getElementById('memberInfoContent');
+            
+            // Format DOB and phone to match table display
+            const formattedDOB = new Date(member.DOB).toLocaleDateString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric'
+            });
+            const formattedPhone = member.phone.replace(/(\+1)(\d{3})(\d{3})(\d{4})/, '$1 ($2) $3-$4');
+            
+            memberInfoContent.innerHTML = `
+                <div class="detail-row">
+                    <span class="detail-label">Date of Birth</span>
+                    <span class="detail-value">${formattedDOB}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Gender</span>
+                    <span class="detail-value">${member.gender}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Email</span>
+                    <span class="detail-value">${member.email}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Phone</span>
+                    <span class="detail-value">${formattedPhone}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Last 4 SSN</span>
+                    <span class="detail-value">****${member.last4ssn}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Insurance Plan</span>
+                    <span class="detail-value">${member.insurance_plan}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Member ID Number</span>
+                    <span class="detail-value">${member.member_id_number}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Group Number</span>
+                    <span class="detail-value">${member.group_number}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Primary Physician</span>
+                    <span class="detail-value">${member.primary_physician}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Employer</span>
+                    <span class="detail-value">${member.employer_name}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Coverage Status</span>
+                    <span class="detail-value">
+                        <span class="member-status ${member.coverage_status.toLowerCase()}">${member.coverage_status}</span>
+                    </span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Enrollment Date</span>
+                    <span class="detail-value">${new Date(member.enrollment_date).toLocaleDateString()}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Consent Signed</span>
+                    <span class="detail-value">${member.consent_signed ? 'Yes' : 'No'}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Created Date</span>
+                    <span class="detail-value">${new Date(member.created_at).toLocaleDateString()}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Last Updated</span>
+                    <span class="detail-value">${new Date(member.updated_at).toLocaleDateString()}</span>
+                </div>
+            `;
+            
+            // Enable buttons in header
             document.getElementById('startBtn').disabled = false;
             document.getElementById('callBtn').disabled = false;
             
@@ -1458,6 +2046,43 @@ If none of these work, try the phone call option instead - it doesn't require br
             
             conversationArea.appendChild(messageDiv);
             conversationArea.scrollTop = conversationArea.scrollHeight;
+        }
+        
+        // Action button functions for member cards
+        function startAssessmentForMember(memberId) {
+            const member = membersData.find(m => m.member_id === memberId);
+            if (member) {
+                selectedMember = member;
+                selectMember(member);
+                startConversation();
+            }
+        }
+        
+        function callMember(memberId) {
+            const member = membersData.find(m => m.member_id === memberId);
+            if (member) {
+                selectedMember = member;
+                selectMember(member);
+                initiateCall();
+            }
+        }
+        
+        function viewTranscript(memberId) {
+            const member = membersData.find(m => m.member_id === memberId);
+            if (member) {
+                selectedMember = member;
+                selectMember(member);
+                downloadTranscript();
+            }
+        }
+        
+        function stopAssessmentForMember(memberId) {
+            const member = membersData.find(m => m.member_id === memberId);
+            if (member && selectedMember && selectedMember.member_id === memberId) {
+                stopConversation();
+            } else {
+                showError('No active assessment for this member.');
+            }
         }
     </script>
 </body>

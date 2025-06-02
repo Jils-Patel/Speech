@@ -1,9 +1,11 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, redirect, url_for, session, flash
 import time
 import base64
 import os
 import uuid
 import json
+import hashlib
+from functools import wraps
 from flask_socketio import SocketIO, emit
 from dotenv import load_dotenv
 from google.cloud import texttospeech
@@ -17,8 +19,23 @@ from twilio.twiml.voice_response import VoiceResponse, Connect
 load_dotenv()
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'speech_conversation_secret_key'
+app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'your-healthcare-secret-key-2024')
+app.config['PERMANENT_SESSION_LIFETIME'] = 3600  # 1 hour session
 socketio = SocketIO(app, cors_allowed_origins="*", logger=True, engineio_logger=True)
+
+# Simple user credentials (change these to your preferred username/password)
+USERS = {
+    "humadmin12@3": "hummem123@3"  # Only username/password that works
+}
+
+def login_required(f):
+    """Decorator to require login for routes"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'logged_in' not in session or not session['logged_in']:
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated_function
 
 # Load members data
 def load_members():
@@ -39,7 +56,7 @@ speech_client = speech.SpeechClient.from_service_account_json(os.getenv("GCP_KEY
 TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
 TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
 TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER")
-DIALOGFLOW_CX_CONNECTOR_NAME = os.getenv("DIALOGFLOW_CX_CONNECTOR_NAME", "smalltalk")
+DIALOGFLOW_CX_CONNECTOR_NAME = os.getenv("DIALOGFLOW_CX_CONNECTOR_NAME", "HRA")
 
 # Initialize Twilio client
 twilio_client = None
@@ -215,7 +232,34 @@ def process_with_dialogflow(text, session_path, member_params=None):
         print(f"Error in Dialogflow processing: {e}")
         return None, None
 
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    """Simple login page"""
+    if request.method == 'POST':
+        username = request.form.get('username', '').strip()
+        password = request.form.get('password', '')
+        
+        # Check credentials
+        if username in USERS and USERS[username] == password:
+            session['logged_in'] = True
+            session['username'] = username
+            session.permanent = True
+            flash(f'Welcome, {username}!', 'success')
+            return redirect(url_for('index'))
+        else:
+            flash('Invalid username or password. Please try again.', 'error')
+    
+    return render_template('login.html')
+
+@app.route('/logout')
+def logout():
+    """Logout and clear session"""
+    session.clear()
+    flash('You have been logged out successfully.', 'info')
+    return redirect(url_for('login'))
+
 @app.route('/')
+@login_required
 def index():
     return render_template('index_cloud.html')
 
@@ -596,6 +640,7 @@ def dialogflow_webhook():
         })
 
 @app.route('/api/members')
+@login_required
 def get_members():
     """API endpoint to get list of members"""
     return jsonify(members_data)
@@ -618,13 +663,30 @@ def make_outbound_call(member_data):
         # Add member parameters to the virtual agent connection
         virtual_agent = connect.virtual_agent(connector_name=DIALOGFLOW_CX_CONNECTOR_NAME)
         
-        # You can pass parameters here if your connector supports it
-        # For now, we'll rely on the session parameters in Dialogflow
+        # Pass member parameters as session parameters to Dialogflow CX
+        # These will be available as $session.params.first_name, etc.
+        virtual_agent.parameter(name='member_id', value=member_data.get('member_id', ''))
+        virtual_agent.parameter(name='first_name', value=member_data.get('first_name', ''))
+        virtual_agent.parameter(name='last_name', value=member_data.get('last_name', ''))
+        virtual_agent.parameter(name='DOB', value=member_data.get('DOB', ''))
+        virtual_agent.parameter(name='email', value=member_data.get('email', ''))
+        virtual_agent.parameter(name='last4ssn', value=member_data.get('last4ssn', ''))
+        virtual_agent.parameter(name='phone', value=member_data.get('phone', ''))
+        virtual_agent.parameter(name='gender', value=member_data.get('gender', ''))
+        virtual_agent.parameter(name='insurance_plan', value=member_data.get('insurance_plan', ''))
+        virtual_agent.parameter(name='member_id_number', value=member_data.get('member_id_number', ''))
+        virtual_agent.parameter(name='group_number', value=member_data.get('group_number', ''))
+        virtual_agent.parameter(name='primary_physician', value=member_data.get('primary_physician', ''))
+        virtual_agent.parameter(name='employer_name', value=member_data.get('employer_name', ''))
+        virtual_agent.parameter(name='coverage_status', value=member_data.get('coverage_status', ''))
+        virtual_agent.parameter(name='enrollment_date', value=member_data.get('enrollment_date', ''))
+        virtual_agent.parameter(name='consent_signed', value=str(member_data.get('consent_signed', False)))
         
         response.append(connect)
         twiml_content = str(response)
         
         print(f"Making call to {member_data['phone']} from {TWILIO_PHONE_NUMBER}")
+        print(f"Passing member parameters: {member_data.get('first_name', '')} {member_data.get('last_name', '')}")
         print(f"TwiML: {twiml_content}")
         
         # Make the outbound call
@@ -689,4 +751,9 @@ if __name__ == '__main__':
     print(f"Project: {PROJECT_ID}")
     print(f"Agent: {AGENT_ID}")
     print(f"Location: {LOCATION_ID}")
-    socketio.run(app, host='0.0.0.0', port=8080, debug=True) 
+    
+    # Get port from environment variable (Cloud Run requirement) or default to 8080
+    port = int(os.getenv('PORT', 8080))
+    print(f"Starting server on port: {port}")
+    
+    socketio.run(app, host='0.0.0.0', port=port, debug=False) 
