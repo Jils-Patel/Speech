@@ -61,7 +61,12 @@ DIALOGFLOW_CX_CONNECTOR_NAME = os.getenv("DIALOGFLOW_CX_CONNECTOR_NAME", "HRA")
 # Initialize Twilio client
 twilio_client = None
 if TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN:
-    twilio_client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+    try:
+        twilio_client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+        print("Twilio client initialized successfully")
+    except Exception as e:
+        print(f"Failed to initialize Twilio client: {e}")
+        twilio_client = None
 
 PROJECT_ID = os.getenv("PROJECT_ID")
 AGENT_ID = os.getenv("AGENT_ID")
@@ -647,6 +652,7 @@ def get_members():
 
 def make_outbound_call(member_data):
     """Make an outbound call to the member using Twilio"""
+
     if not twilio_client:
         print("Twilio client not initialized - missing credentials")
         return None, "Twilio not configured"
@@ -654,6 +660,8 @@ def make_outbound_call(member_data):
     if not member_data.get('phone'):
         print("No phone number found for member")
         return None, "No phone number for member"
+    
+
     
     try:
         # Create TwiML to connect to Dialogflow CX
@@ -753,7 +761,7 @@ if __name__ == '__main__':
     print(f"Location: {LOCATION_ID}")
     
     # Get port from environment variable (Cloud Run requirement) or default to 8080
-    port = int(os.getenv('PORT', 8080))
+    port = int(os.getenv('PORT', 8082))
     print(f"Starting server on port: {port}")
     
     socketio.run(app, host='0.0.0.0', port=port, debug=False) 

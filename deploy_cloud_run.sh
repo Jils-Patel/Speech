@@ -10,6 +10,12 @@ REGION="us-central1"
 SERVICE_NAME="health-assessment-app"
 IMAGE_NAME="gcr.io/${PROJECT_ID}/${SERVICE_NAME}"
 
+# Load environment variables from .env file if it exists
+if [ -f ".env" ]; then
+    echo "Loading environment variables from .env file..."
+    source .env
+fi
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -35,12 +41,16 @@ fi
 # Check if .env file exists
 if [ ! -f ".env" ]; then
     echo -e "${RED}❌ Error: .env file not found${NC}"
-    echo "Please create a .env file with your Google Cloud configuration:"
+    echo "Please create a .env file with your configuration:"
     echo "GCP_KEY_PATH=./gcp_key.json"
-    echo "PROJECT_ID=your-project-id"
-    echo "AGENT_ID=your-agent-id"
-    echo "LOCATION_ID=your-location-id"
+    echo "PROJECT_ID=abiding-center-460016-k1"
+    echo "AGENT_ID=84847bd0-ef09-4918-952d-8f9d8dff2b34"
+    echo "LOCATION_ID=us-central1"
     echo "LANGUAGE_CODE=en-US"
+    echo "TWILIO_ACCOUNT_SID=ACe758ef910e78fc0893d7133aef757c18"
+    echo "TWILIO_AUTH_TOKEN=fcf7ebc743f86e7727dd09f6a3ccc4c8"
+    echo "TWILIO_PHONE_NUMBER=+18337681884"
+    echo "DIALOGFLOW_CX_CONNECTOR_NAME=HRA"
     exit 1
 fi
 
@@ -90,8 +100,17 @@ gcloud run deploy $SERVICE_NAME \
     --timeout 300 \
     --concurrency 80 \
     --port 8080 \
+    --vpc-egress all-traffic \
     --set-env-vars "GCP_KEY_PATH=./gcp_key.json" \
-    --set-env-vars "PROJECT_ID=${PROJECT_ID}"
+    --set-env-vars "PROJECT_ID=${PROJECT_ID}" \
+    --set-env-vars "AGENT_ID=${AGENT_ID}" \
+    --set-env-vars "LOCATION_ID=${LOCATION_ID}" \
+    --set-env-vars "LANGUAGE_CODE=${LANGUAGE_CODE}" \
+    --set-env-vars "TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID}" \
+    --set-env-vars "TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN}" \
+    --set-env-vars "TWILIO_PHONE_NUMBER=${TWILIO_PHONE_NUMBER}" \
+    --set-env-vars "DIALOGFLOW_CX_CONNECTOR_NAME=${DIALOGFLOW_CX_CONNECTOR_NAME}" \
+    --set-env-vars "SECRET_KEY=your-healthcare-secret-key-2024"
 
 # Get the service URL
 SERVICE_URL=$(gcloud run services describe $SERVICE_NAME --region=$REGION --format='value(status.url)')

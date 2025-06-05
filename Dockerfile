@@ -11,6 +11,10 @@ ENV PYTHONDONTWRITEBYTECODE=1
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     gcc \
+    ca-certificates \
+    dnsutils \
+    iputils-ping \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first to leverage Docker cache
@@ -22,6 +26,8 @@ COPY app_cloud.py .
 COPY templates/ templates/
 COPY gcp_key.json .
 COPY members.json .
+COPY container_network_test.py .
+COPY .env .
 
 # Create a non-root user
 RUN useradd -m app
@@ -32,7 +38,7 @@ USER app
 ENV GCP_KEY_PATH=/app/gcp_key.json
 
 # Expose port
-EXPOSE 8080
+EXPOSE 8082
 
-# Run the application
-CMD ["gunicorn", "--worker-class", "eventlet", "--workers", "1", "--bind", "0.0.0.0:8080", "app_cloud:app"] 
+# Run the application directly with Python (not Gunicorn)
+CMD ["python", "app_cloud.py"] 
