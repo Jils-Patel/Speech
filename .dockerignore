@@ -12,5 +12,3 @@ Dockerfile
 transcript_*.txt
 *.log
 .DS_Store
-app.py
-requirements.txt 

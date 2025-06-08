@@ -1,13 +1,5 @@
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session, flash
-import time
-import base64
-import os
-import uuid
-import json
-import hashlib
-from functools import wraps
 from flask_socketio import SocketIO, emit
-from dotenv import load_dotenv
 from google.cloud import texttospeech
 from google.cloud import speech_v1 as speech
 from google.cloud import dialogflowcx_v3beta1 as dialogflowcx
@@ -15,73 +7,50 @@ from google.api_core.client_options import ClientOptions
 from google.oauth2 import service_account
 from twilio.rest import Client
 from twilio.twiml.voice_response import VoiceResponse, Connect
+from functools import wraps
+from dotenv import load_dotenv
+import time
+import base64
+import os
+import uuid
+import json
 
 load_dotenv()
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'your-healthcare-secret-key-2024')
-app.config['PERMANENT_SESSION_LIFETIME'] = 3600  # 1 hour session
 socketio = SocketIO(app, cors_allowed_origins="*", logger=True, engineio_logger=True)
 
-# Simple user credentials (change these to your preferred username/password)
-USERS = {
-    "humadmin12@3": "hummem123@3"  # Only username/password that works
-}
-
-def login_required(f):
-    """Decorator to require login for routes"""
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if 'logged_in' not in session or not session['logged_in']:
-            return redirect(url_for('login'))
-        return f(*args, **kwargs)
-    return decorated_function
-
-# Load members data
-def load_members():
-    try:
-        with open('members.json', 'r') as f:
-            return json.load(f)
-    except Exception as e:
-        print(f"Error loading members.json: {e}")
-        return []
-
-members_data = load_members()
-
-# Initialize Google Cloud clients
-tts_client = texttospeech.TextToSpeechClient.from_service_account_json(os.getenv("GCP_KEY_PATH"))
-speech_client = speech.SpeechClient.from_service_account_json(os.getenv("GCP_KEY_PATH"))
-
-# Twilio configuration
+USERS = { "humadmin12@3": "hummem123@3" }
 TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
 TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
 TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER")
 DIALOGFLOW_CX_CONNECTOR_NAME = os.getenv("DIALOGFLOW_CX_CONNECTOR_NAME", "HRA")
-
-# Initialize Twilio client
-twilio_client = None
-if TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN:
-    try:
-        twilio_client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
-        print("Twilio client initialized successfully")
-    except Exception as e:
-        print(f"Failed to initialize Twilio client: {e}")
-        twilio_client = None
-
 PROJECT_ID = os.getenv("PROJECT_ID")
 AGENT_ID = os.getenv("AGENT_ID")
 LOCATION_ID = os.getenv("LOCATION_ID")
 LANGUAGE_CODE = os.getenv("LANGUAGE_CODE", "en-US")
 
-credentials = service_account.Credentials.from_service_account_file(os.getenv("GCP_KEY_PATH"))
-api_endpoint = f"{LOCATION_ID}-dialogflow.googleapis.com:443"
-client_options = ClientOptions(api_endpoint=api_endpoint)
-dialogflow_client = dialogflowcx.SessionsClient(
-    credentials=credentials,
-    client_options=client_options
-)
+tts_client = texttospeech.TextToSpeechClient.from_service_account_json(os.getenv("GCP_KEY_PATH"))
+speech_client = speech.SpeechClient.from_service_account_json(os.getenv("GCP_KEY_PATH"))
+twilio_client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
 
-conversations = {}  # Store per-session conversation state
+credentials = service_account.Credentials.from_service_account_file(os.getenv("GCP_KEY_PATH"))
+client_options = ClientOptions(api_endpoint=f"{LOCATION_ID}-dialogflow.googleapis.com:443")
+dialogflow_client = dialogflowcx.SessionsClient( credentials=credentials, client_options=client_options)
+
+conversations = {}
+sent_user_messages = {} # Track sent messages to prevent duplicates (per session)
+sent_agent_messages = {}
+
+def load_members():
+    try:
+        with open('members.json', 'r') as f:
+            return json.load(f)
+    except Exception as e:
+        return []
+
+members_data = load_members()
 
 class ConversationSession:
     def __init__(self, session_id):
@@ -97,7 +66,15 @@ class ConversationSession:
         self.call_sid = None
         self.call_mode = "web"  # "web" or "phone"
 
-def format_transcript_as_text(transcript_data):
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'logged_in' not in session or not session['logged_in']:
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+def format_transcript(transcript_data):
     text_content = ""
     for entry in transcript_data:
         text_content += f"Question: {entry['question']}\n"
@@ -115,34 +92,27 @@ def text_to_speech(text):
             ssml_gender=texttospeech.SsmlVoiceGender.FEMALE,
             name="en-US-Chirp3-HD-Sulafat"
         )
-        
         audio_config = texttospeech.AudioConfig(
             audio_encoding=texttospeech.AudioEncoding.MP3,
             speaking_rate=1.1,
             pitch=0.0
         )
-        
         response = tts_client.synthesize_speech(
             input=synthesis_input,
             voice=voice,
             audio_config=audio_config
         )
-        
         return response.audio_content
-        
     except Exception as e:
         print(f"Error in text-to-speech: {e}")
         return None
 
-def transcribe_audio_content(audio_content, encoding="WEBM_OPUS"):
+def speech_to_text(audio_content, encoding="WEBM_OPUS"):
     try:
-        print(f"Transcription attempt - encoding: {encoding}, audio size: {len(audio_content)}")
         if len(audio_content) < 100:
             return None, 0
             
         audio = speech.RecognitionAudio(content=audio_content)
-        
-        # Simplified encoding mapping - removed MP3 which isn't supported
         encoding_map = {
             "WEBM_OPUS": speech.RecognitionConfig.AudioEncoding.WEBM_OPUS,
             "LINEAR16": speech.RecognitionConfig.AudioEncoding.LINEAR16,
@@ -152,7 +122,6 @@ def transcribe_audio_content(audio_content, encoding="WEBM_OPUS"):
         }
         
         selected_encoding = encoding_map.get(encoding, speech.RecognitionConfig.AudioEncoding.WEBM_OPUS)
-        print(f"Selected encoding enum: {selected_encoding}")
         
         config = speech.RecognitionConfig(
             encoding=selected_encoding,
@@ -167,47 +136,32 @@ def transcribe_audio_content(audio_content, encoding="WEBM_OPUS"):
         )
         
         response = speech_client.recognize(config=config, audio=audio)
-        print(f"Response received: {len(response.results) if response.results else 0} results")
-        
         if response.results:
             best_alternative = response.results[0].alternatives[0]
             transcript = best_alternative.transcript.strip()
             confidence = best_alternative.confidence
             
-            print(f"Transcription successful: '{transcript}' (confidence: {confidence:.2f})")
-            
             if confidence > 0.3:
                 return transcript, confidence
             else:
-                print(f"Low confidence transcription rejected: {confidence:.2f}")
                 return None, 0
         else:
-            print("No transcription results returned")
             return None, 0
             
     except Exception as e:
-        import traceback
-        print(f"Transcription error: {e}")
-        print(f"Full traceback: {traceback.format_exc()}")
-        
-        # Fallback to LINEAR16 if WEBM_OPUS fails
-        if encoding == "WEBM_OPUS":
-            print("Retrying with LINEAR16 encoding...")
-            return transcribe_audio_content(audio_content, "LINEAR16")
-        
+        if encoding == "WEBM_OPUS": # Fallback to LINEAR16 if WEBM_OPUS fails
+            return speech_to_text(audio_content, "LINEAR16")
         return None, 0
 
-def process_with_dialogflow(text, session_path, member_params=None):
+def get_dialogflow(text, session_path, member_params=None):
     try:
         text_input = dialogflowcx.TextInput(text=text)
         query_input = dialogflowcx.QueryInput(text=text_input, language_code=LANGUAGE_CODE)
-        
         request = dialogflowcx.DetectIntentRequest(
             session=session_path,
             query_input=query_input,
         )
         
-        # Add member parameters as session parameters if provided (first message only)
         if member_params:
             request.query_params = dialogflowcx.QueryParameters(
                 parameters={
@@ -219,7 +173,6 @@ def process_with_dialogflow(text, session_path, member_params=None):
                     'last4ssn': member_params.get('last4ssn', '')
                 }
             )
-            print(f"Sending member parameters to Dialogflow: {member_params}")
         
         response = dialogflow_client.detect_intent(request=request)
         
@@ -234,17 +187,14 @@ def process_with_dialogflow(text, session_path, member_params=None):
             return None, None
             
     except Exception as e:
-        print(f"Error in Dialogflow processing: {e}")
         return None, None
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
-    """Simple login page"""
     if request.method == 'POST':
         username = request.form.get('username', '').strip()
         password = request.form.get('password', '')
         
-        # Check credentials
         if username in USERS and USERS[username] == password:
             session['logged_in'] = True
             session['username'] = username
@@ -258,7 +208,6 @@ def login():
 
 @app.route('/logout')
 def logout():
-    """Logout and clear session"""
     session.clear()
     flash('You have been logged out successfully.', 'info')
     return redirect(url_for('login'))
@@ -266,12 +215,11 @@ def logout():
 @app.route('/')
 @login_required
 def index():
-    return render_template('index_cloud.html')
+    return render_template('index.html')
 
 @socketio.on('connect')
 def handle_connect():
     session_id = request.sid
-    print(f'Client connected: {session_id}')
     if session_id not in conversations:
         conversations[session_id] = ConversationSession(session_id)
     emit('connection_established', {'status': 'Connected to server'})
@@ -279,14 +227,12 @@ def handle_connect():
 @socketio.on('disconnect')
 def handle_disconnect():
     session_id = request.sid
-    print(f'Client disconnected: {session_id}')
     if session_id in conversations:
         conversations[session_id].is_active = False
 
 @socketio.on('start_conversation')
 def handle_start_conversation():
     session_id = request.sid
-    print(f'Starting conversation for session: {session_id}')
     
     if session_id in conversations:
         conv = conversations[session_id]
@@ -303,14 +249,12 @@ def handle_start_conversation():
             'message': 'Conversation started. Please speak to begin.'
         })
         
-        print(f"Conversation ready for session {session_id}. Waiting for user input.")
     else:
         emit('error', {'message': 'Session not found. Please refresh the page.'})
 
 @socketio.on('stop_conversation')
 def handle_stop_conversation():
     session_id = request.sid
-    print(f'Stopping conversation for session: {session_id}')
     
     if session_id in conversations:
         conv = conversations[session_id]
@@ -322,7 +266,7 @@ def handle_stop_conversation():
             
             try:
                 with open(filename, 'w') as f:
-                    f.write(format_transcript_as_text(conv.transcript))
+                    f.write(format_transcript(conv.transcript))
                 
                 emit('transcript_saved', {'filename': filename})
             except Exception as e:
@@ -335,47 +279,34 @@ def handle_audio_data(data):
     session_id = request.sid
     
     if session_id not in conversations:
-        print(f"No session found for {session_id}, creating new one")
-        conversations[session_id] = ConversationSession(session_id)
-        emit('error', {'message': 'Session was reset. Please restart the conversation.'})
+        emit('error', {'message': 'Session not found'})
         return
     
     conv = conversations[session_id]
     if not conv.is_active:
-        emit('error', {'message': 'Conversation not active'})
         return
     
     try:
         conv.audio_count += 1
-        print(f'Received audio data for session: {session_id} (audio #{conv.audio_count})')
         emit('processing_audio', {'status': 'Processing your speech...'})
-        
-        # Decode audio data
         audio_content = base64.b64decode(data['audio'])
         encoding = data.get('encoding', 'WEBM_OPUS')
-        
-        print(f'Audio content size: {len(audio_content)} bytes, encoding: {encoding}')
-        
-        transcript, confidence = transcribe_audio_content(audio_content, encoding)
+        transcript, confidence = speech_to_text(audio_content, encoding)
         
         if transcript and transcript.strip():
-            print(f'Transcription: {transcript} (confidence: {confidence})')
             emit('transcription_result', {
                 'text': transcript,
                 'confidence': confidence
             })
             
-            # Determine if we need to send member parameters (first message only)
-            member_params = None
+            member_params = None # Determine if we need to send member parameters (first message only)
             if not conv.first_message_sent and conv.selected_member:
                 member_params = conv.selected_member
                 conv.first_message_sent = True
-                print(f"Sending member parameters on first message: {member_params}")
             
-            response_text, query_result = process_with_dialogflow(transcript, conv.session_path, member_params)
+            response_text, query_result = get_dialogflow(transcript, conv.session_path, member_params)
             
             if response_text:
-                print(f'Dialogflow response: {response_text}')
                 
                 tts_audio = text_to_speech(response_text)
                 
@@ -396,7 +327,6 @@ def handle_audio_data(data):
                     try:
                         if query_result and hasattr(query_result, 'intent') and query_result.intent:
                             if hasattr(query_result.intent, 'end_conversation') and query_result.intent.end_conversation:
-                                print("Dialogflow indicated end of conversation")
                                 conv.is_active = False
                                 emit('conversation_should_end', {'reason': 'intent_end_conversation'})
                     except Exception as intent_error:
@@ -407,7 +337,6 @@ def handle_audio_data(data):
             else:
                 emit('error', {'message': 'Failed to get response from Dialogflow'})
         else:
-            print(f"No valid transcription for audio #{conv.audio_count}")
             emit('transcription_result', {
                 'text': '',
                 'confidence': 0,
@@ -415,7 +344,6 @@ def handle_audio_data(data):
             })
             
     except Exception as e:
-        print(f'Error processing audio #{conv.audio_count}: {e}')
         import traceback
         print(f"Full error traceback: {traceback.format_exc()}")
         emit('error', {'message': f'Error processing audio: {str(e)}'})
@@ -434,12 +362,8 @@ def handle_select_member(data):
     session_id = request.sid
     member_id = data.get('member_id')
     
-    print(f'Member selected for session {session_id}: {member_id}')
-    
     if session_id in conversations:
         conv = conversations[session_id]
-        
-        # Find the selected member in members_data
         selected_member = None
         for member in members_data:
             if member['member_id'] == member_id:
@@ -452,7 +376,6 @@ def handle_select_member(data):
                 'member': selected_member,
                 'message': f'Selected member: {selected_member["first_name"]} {selected_member["last_name"]}'
             })
-            print(f"Member {selected_member['first_name']} {selected_member['last_name']} selected for session {session_id}")
         else:
             emit('error', {'message': 'Member not found'})
     else:
@@ -460,172 +383,172 @@ def handle_select_member(data):
 
 @app.route('/dialogflow-webhook', methods=['POST'])
 def dialogflow_webhook():
-    """Webhook to receive conversation events from Dialogflow CX during phone calls"""
     try:
-        # Get the webhook request data
         webhook_request = request.get_json()
-        
         if not webhook_request:
             return jsonify({'fulfillmentResponse': {'messages': []}})
         
-        print(f"Full webhook payload: {webhook_request}")
-        
-        # Extract conversation information
+        current_time = time.time()
         session_info = webhook_request.get('sessionInfo', {})
         session_id = session_info.get('session', '')
         parameters = session_info.get('parameters', {})
+        user_query = ""
         
-        # Extract the actual user query text - the 'transcript' field contains user speech
-        query_text = ""
-        agent_response = ""
+        # Find matching conversation session
+        matching_conv = None
+        matching_socket_session = None
         
-        # Primary source: transcript field (this is where user speech appears in phone calls)
+        # Extract just the session ID from the full session path
+        session_id_only = session_id.split('/')[-1] if '/' in session_id else session_id
+        
+        for socket_session_id, conv in conversations.items():
+            conv_session_id = conv.dialogflow_session_id
+            # Try multiple matching strategies
+            if (conv_session_id == session_id_only or 
+                conv.session_path.endswith(session_id) or
+                conv.session_path.endswith(session_id_only)):
+                matching_conv = conv
+                matching_socket_session = socket_session_id
+                break
+        
         if 'transcript' in webhook_request:
-            query_text = webhook_request['transcript'].strip()
+            user_query = webhook_request['transcript'].strip()
+        elif 'text' in webhook_request:
+            user_query = webhook_request['text'].strip()
+        elif 'dtmfDigits' in webhook_request:
+            user_query = webhook_request['dtmfDigits'].strip()
         
-        # Fallback: try other possible locations for user input
-        if not query_text:
-            if 'text' in webhook_request:
-                query_text = webhook_request['text']
-            elif 'queryText' in webhook_request:
-                query_text = webhook_request['queryText']
-            elif 'query' in webhook_request:
-                query_text = webhook_request['query']
-            
-            # Try to get from queryResult (this often contains the user's original input)
-            if 'queryResult' in webhook_request:
-                query_result = webhook_request['queryResult']
-                if 'queryText' in query_result:
-                    query_text = query_result['queryText']
-                elif 'text' in query_result:
-                    query_text = query_result['text']
-            
-            # Try to get from originalDetectIntentRequest
-            if 'originalDetectIntentRequest' in webhook_request:
-                original_request = webhook_request['originalDetectIntentRequest']
-                if 'payload' in original_request:
-                    payload = original_request['payload']
-                    if 'query' in payload:
-                        query_text = payload['query']
-                    elif 'text' in payload:
-                        query_text = payload['text']
-            
-            # Try to get from detectIntentRequest
-            if 'detectIntentRequest' in webhook_request:
-                detect_intent = webhook_request['detectIntentRequest']
-                if 'queryInput' in detect_intent:
-                    query_input = detect_intent['queryInput']
-                    if 'text' in query_input:
-                        text_input = query_input['text']
-                        if 'text' in text_input:
-                            query_text = text_input['text']
+        agent_response = ""
+        messages = webhook_request.get('messages', [])
+        agent_responses = []
+        for message in messages:
+            if 'text' in message:
+                text_obj = message['text']
+                if 'text' in text_obj:
+                    text_variations = text_obj['text']
+                    if isinstance(text_variations, list) and text_variations:
+                        agent_responses.append(text_variations[0])
+                    elif isinstance(text_variations, str):
+                        agent_responses.append(text_variations)
         
-        # Try to get from fulfillmentInfo for user input
+        if agent_responses:
+            agent_response = ' '.join(agent_responses).strip()
+        
         fulfillment_info = webhook_request.get('fulfillmentInfo', {})
         tag = fulfillment_info.get('tag', '')
         
-        # Get intent information
         intent_info = webhook_request.get('intentInfo', {})
         intent_name = intent_info.get('displayName', 'Unknown Intent')
         
-        # Get page information
         page_info = webhook_request.get('pageInfo', {})
         page_name = page_info.get('displayName', 'Unknown Page')
         
-        # Try to extract messages from the response
-        messages = []
-        if 'messages' in webhook_request:
-            messages = webhook_request['messages']
-        elif 'fulfillmentResponse' in webhook_request:
-            fulfillment_response = webhook_request['fulfillmentResponse']
-            if 'messages' in fulfillment_response:
-                messages = fulfillment_response['messages']
-        
-        # Extract text from messages
-        for message in messages:
-            if 'text' in message and 'text' in message['text']:
-                agent_response = ' '.join(message['text']['text'])
-                break
-        
-        print(f"Webhook received:")
-        print(f"  Session: {session_id}")
-        print(f"  User Query: '{query_text}'")
-        print(f"  Agent Response: '{agent_response}'")
-        print(f"  Intent: {intent_name}")
-        print(f"  Page: {page_name}")
-        print(f"  Tag: {tag}")
-        print(f"  Parameters: {parameters}")
-        
-        # Find the conversation session that matches this phone call
         phone_conversation_session = None
-        for conv_session_id, conv in conversations.items():
-            if conv.call_mode == "phone" and conv.is_active:
-                # For phone calls, we'll match based on member parameters or session
-                if (parameters.get('member_id') == conv.selected_member.get('member_id') if conv.selected_member else False):
-                    phone_conversation_session = conv_session_id
-                    break
-                # Fallback: use the most recent active phone conversation
-                phone_conversation_session = conv_session_id
         
-        # If we found a matching session, broadcast the conversation update
+        # First try to find exact session match using the matching_conv we found earlier
+        if matching_conv and matching_socket_session:
+            phone_conversation_session = matching_socket_session
+        else:
+            # Fallback: try to find by member_id for outbound calls
+            # PRIORITY: Find most recent outbound session over inbound sessions
+            member_id = parameters.get('member_id')
+            if member_id:
+                outbound_candidates = []
+                inbound_candidates = []
+                
+                for conv_session_id, conv in conversations.items():
+                    if (conv.call_mode == "phone" and conv.is_active and 
+                        conv.selected_member and conv.selected_member.get('member_id') == member_id):
+                        
+                        # Check if this is an outbound session (has call_sid from Twilio)
+                        if hasattr(conv, 'call_sid') and conv.call_sid:
+                            # This is an outbound session - from Twilio
+                            outbound_candidates.append(conv_session_id)
+                        else:
+                            # This is an inbound session - no call_sid
+                            inbound_candidates.append(conv_session_id)
+                
+                # Choose the most appropriate session
+                if outbound_candidates:
+                    # For outbound calls, use the latest outbound session
+                    phone_conversation_session = outbound_candidates[-1]  # Most recent
+                elif inbound_candidates:
+                    # For inbound calls, use inbound session
+                    phone_conversation_session = inbound_candidates[-1]  # Most recent
+            
+            # If still no match, DON'T broadcast to any session
+            if not phone_conversation_session:
+                return jsonify({'fulfillmentResponse': {'messages': []}})
         if phone_conversation_session:
             conv = conversations[phone_conversation_session]
+            is_call_end = False
+            if ('eventType' in webhook_request and 'call' in webhook_request['eventType'].lower() and 'end' in webhook_request['eventType'].lower()) or \
+               ('sessionInfo' in webhook_request and 'endCallReason' in webhook_request['sessionInfo']) or \
+               ('intent' in webhook_request and 'end' in str(webhook_request['intent']).lower()):
+                is_call_end = True
             
-            # If we have user query text, it's a user message
-            if query_text and query_text.strip():
-                print(f"Broadcasting user message: {query_text}")
+            if user_query and user_query.strip():
+                # Check if we've already sent this user message
+                global sent_user_messages
+                if phone_conversation_session not in sent_user_messages:
+                    sent_user_messages[phone_conversation_session] = set()
                 
-                # Check if this is a duplicate (sometimes webhooks fire multiple times)
-                is_duplicate = False
-                if conv.transcript and conv.transcript[-1].get("question") == query_text:
-                    is_duplicate = True
-                
-                if not is_duplicate:
+                user_msg_hash = hash(user_query.strip())
+                if user_msg_hash not in sent_user_messages[phone_conversation_session]:
+                    sent_user_messages[phone_conversation_session].add(user_msg_hash)
+                    
+                    # Add to transcript
                     conv.transcript.append({
-                        "question": query_text,
-                        "answer": ""  # Will be filled when agent responds
+                        "question": user_query,
+                        "answer": "",  # Will be filled when agent responds
+                        "timestamp": current_time
                     })
                     
                     # Broadcast user message to UI
                     socketio.emit('phone_transcription_result', {
-                        'text': query_text,
+                        'text': user_query,
                         'type': 'user',
-                        'timestamp': time.time()
+                        'timestamp': current_time
                     }, room=phone_conversation_session)
             
-            # If we have agent response text, it's an agent message
             if agent_response and agent_response.strip():
-                print(f"Broadcasting agent response: {agent_response}")
+                # Check if we've already sent this agent message
+                global sent_agent_messages
+                if phone_conversation_session not in sent_agent_messages:
+                    sent_agent_messages[phone_conversation_session] = set()
                 
-                # Check if this is a duplicate response
-                is_duplicate = False
-                if conv.transcript and conv.transcript[-1].get("answer") == agent_response:
-                    is_duplicate = True
-                
-                if not is_duplicate:
-                    # Update the last transcript entry or create new one
+                agent_msg_hash = hash(agent_response.strip())
+                if agent_msg_hash not in sent_agent_messages[phone_conversation_session]:
+                    sent_agent_messages[phone_conversation_session].add(agent_msg_hash)
+                    
                     if conv.transcript and not conv.transcript[-1].get("answer"):
                         conv.transcript[-1]["answer"] = agent_response
+                        conv.transcript[-1]["timestamp"] = current_time
                     else:
-                        # New agent message without user input
                         conv.transcript.append({
                             "question": "",
-                            "answer": agent_response
+                            "answer": agent_response,
+                            "timestamp": current_time
                         })
                     
-                    # Broadcast agent response to UI
                     socketio.emit('phone_agent_response', {
                         'text': agent_response,
                         'type': 'agent',
-                        'timestamp': time.time()
+                        'timestamp': current_time,
+                        'is_call_end': is_call_end
+                    }, room=phone_conversation_session)
+                    socketio.emit('conversation_update', {
+                        'text': agent_response,
+                        'type': 'agent',
+                        'timestamp': current_time,
+                        'source': 'webhook',
+                        'is_call_end': is_call_end
                     }, room=phone_conversation_session)
             
-            # Update transcript
             socketio.emit('transcript_updated', {
                 'transcript': conv.transcript
             }, room=phone_conversation_session)
         
-        # Return empty fulfillment response to continue normal conversation flow
         return jsonify({
             'fulfillmentResponse': {
                 'messages': []
@@ -634,45 +557,122 @@ def dialogflow_webhook():
         
     except Exception as e:
         print(f"Error in Dialogflow webhook: {e}")
-        import traceback
-        print(f"Full error traceback: {traceback.format_exc()}")
-        
-        # Return empty response to not break the conversation
         return jsonify({
             'fulfillmentResponse': {
                 'messages': []
             }
         })
 
+@app.route('/inbound-caller-lookup', methods=['POST'])
+def inbound_caller_lookup():
+    try:
+        webhook_request = request.get_json()
+        
+        payload = webhook_request.get('payload', {})
+        telephony = payload.get('telephony', {})
+        caller_id = telephony.get('caller_id', '')
+        
+        if not caller_id:
+            return jsonify({
+                'fulfillmentResponse': {
+                    'messages': []
+                },
+                'sessionInfo': {
+                    'parameters': {
+                        'call_type': 'inbound',
+                        'caller_id': '',
+                        'member_found': False
+                    }
+                }
+            })
+        
+        members_data = load_members()
+        matching_member = None
+        for member in members_data:
+            if member.get('phone') == caller_id:
+                matching_member = member
+                break
+        
+        if matching_member:
+            new_session_id = str(uuid.uuid4())
+            conversations[new_session_id] = ConversationSession(new_session_id)
+            conversations[new_session_id].call_mode = "phone"
+            conversations[new_session_id].is_active = True
+            conversations[new_session_id].selected_member = matching_member
+            
+            session_parameters = {
+                'call_type': 'inbound',
+                'caller_id': caller_id,
+                'member_found': True,
+                'member_id': matching_member.get('member_id', ''),
+                'first_name': matching_member.get('first_name', ''),
+                'last_name': matching_member.get('last_name', ''),
+                'DOB': matching_member.get('DOB', ''),
+                'email': matching_member.get('email', ''),
+                'last4ssn': matching_member.get('last4ssn', ''),
+                'phone': matching_member.get('phone', ''),
+                'gender': matching_member.get('gender', ''),
+                'insurance_plan': matching_member.get('insurance_plan', ''),
+                'member_id_number': matching_member.get('member_id_number', ''),
+                'group_number': matching_member.get('group_number', ''),
+                'primary_physician': matching_member.get('primary_physician', ''),
+                'employer_name': matching_member.get('employer_name', ''),
+                'coverage_status': matching_member.get('coverage_status', ''),
+                'enrollment_date': matching_member.get('enrollment_date', ''),
+                'consent_signed': str(matching_member.get('consent_signed', False))
+            }
+            
+            return jsonify({
+                'fulfillmentResponse': {
+                    'messages': []
+                },
+                'sessionInfo': {
+                    'parameters': session_parameters
+                }
+            })
+        
+        else:
+            return jsonify({
+                'fulfillmentResponse': {
+                    'messages': []
+                },
+                'sessionInfo': {
+                    'parameters': {
+                        'call_type': 'inbound',
+                        'caller_id': caller_id,
+                        'member_found': False
+                    }
+                }
+            })
+    
+    except Exception as e:
+        return jsonify({
+            'fulfillmentResponse': {
+                'messages': []
+            },
+            'sessionInfo': {
+                'parameters': {
+                    'call_type': 'inbound',
+                    'error': 'lookup_failed'
+                }
+            }
+        })
+
 @app.route('/api/members')
 @login_required
 def get_members():
-    """API endpoint to get list of members"""
     return jsonify(members_data)
 
 def make_outbound_call(member_data):
-    """Make an outbound call to the member using Twilio"""
-
     if not twilio_client:
-        print("Twilio client not initialized - missing credentials")
         return None, "Twilio not configured"
-    
     if not member_data.get('phone'):
-        print("No phone number found for member")
         return None, "No phone number for member"
     
-
-    
     try:
-        # Create TwiML to connect to Dialogflow CX
         response = VoiceResponse()
         connect = Connect()
-        
-        # Add member parameters to the virtual agent connection
         virtual_agent = connect.virtual_agent(connector_name=DIALOGFLOW_CX_CONNECTOR_NAME)
-        
-        # Pass member parameters as session parameters to Dialogflow CX
-        # These will be available as $session.params.first_name, etc.
         virtual_agent.parameter(name='member_id', value=member_data.get('member_id', ''))
         virtual_agent.parameter(name='first_name', value=member_data.get('first_name', ''))
         virtual_agent.parameter(name='last_name', value=member_data.get('last_name', ''))
@@ -689,22 +689,14 @@ def make_outbound_call(member_data):
         virtual_agent.parameter(name='coverage_status', value=member_data.get('coverage_status', ''))
         virtual_agent.parameter(name='enrollment_date', value=member_data.get('enrollment_date', ''))
         virtual_agent.parameter(name='consent_signed', value=str(member_data.get('consent_signed', False)))
-        
         response.append(connect)
         twiml_content = str(response)
         
-        print(f"Making call to {member_data['phone']} from {TWILIO_PHONE_NUMBER}")
-        print(f"Passing member parameters: {member_data.get('first_name', '')} {member_data.get('last_name', '')}")
-        print(f"TwiML: {twiml_content}")
-        
-        # Make the outbound call
         call = twilio_client.calls.create(
             to=member_data['phone'],
             from_=TWILIO_PHONE_NUMBER,
             twiml=twiml_content
         )
-        
-        print(f"Call initiated successfully! Call SID: {call.sid}")
         return call.sid, None
         
     except Exception as e:
@@ -714,7 +706,6 @@ def make_outbound_call(member_data):
 @socketio.on('initiate_call')
 def handle_initiate_call():
     session_id = request.sid
-    print(f'Initiating call for session: {session_id}')
     
     if session_id not in conversations:
         emit('error', {'message': 'Session not found. Please refresh the page.'})
@@ -730,14 +721,12 @@ def handle_initiate_call():
         emit('error', {'message': 'Selected member has no phone number.'})
         return
     
-    # Make the outbound call
     call_sid, error = make_outbound_call(conv.selected_member)
     
     if error:
         emit('error', {'message': f'Failed to initiate call: {error}'})
         return
     
-    # Update conversation session
     conv.call_sid = call_sid
     conv.call_mode = "phone"
     conv.is_active = True
@@ -745,23 +734,20 @@ def handle_initiate_call():
     conv.audio_count = 0
     conv.first_message_sent = False
     
+    global sent_user_messages, sent_agent_messages
+    if session_id in sent_user_messages:
+        del sent_user_messages[session_id]
+    if session_id in sent_agent_messages:
+        del sent_agent_messages[session_id]
+    
     emit('call_initiated', {
         'call_sid': call_sid,
         'member_phone': conv.selected_member['phone'],
         'member_name': f"{conv.selected_member['first_name']} {conv.selected_member['last_name']}",
         'message': f'Calling {conv.selected_member["first_name"]} at {conv.selected_member["phone"]}...'
     })
-    
-    print(f"Call initiated for {conv.selected_member['first_name']} {conv.selected_member['last_name']} at {conv.selected_member['phone']}")
 
 if __name__ == '__main__':
-    print("Starting health assessment server...")
-    print(f"Project: {PROJECT_ID}")
-    print(f"Agent: {AGENT_ID}")
-    print(f"Location: {LOCATION_ID}")
-    
-    # Get port from environment variable (Cloud Run requirement) or default to 8080
     port = int(os.getenv('PORT', 8082))
     print(f"Starting server on port: {port}")
-    
     socketio.run(app, host='0.0.0.0', port=port, debug=False) 
