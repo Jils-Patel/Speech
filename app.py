@@ -14,6 +14,8 @@ import base64
 import os
 import uuid
 import json
+import requests
+from requests.auth import HTTPBasicAuth
 
 load_dotenv()
 
@@ -30,6 +32,7 @@ PROJECT_ID = os.getenv("PROJECT_ID")
 AGENT_ID = os.getenv("AGENT_ID")
 LOCATION_ID = os.getenv("LOCATION_ID")
 LANGUAGE_CODE = os.getenv("LANGUAGE_CODE", "en-US")
+BASE_URL = os.getenv("BASE_URL", "https://your-domain.com")
 
 tts_client = texttospeech.TextToSpeechClient.from_service_account_json(os.getenv("GCP_KEY_PATH"))
 speech_client = speech.SpeechClient.from_service_account_json(os.getenv("GCP_KEY_PATH"))
@@ -65,6 +68,8 @@ class ConversationSession:
         self.first_message_sent = False
         self.call_sid = None
         self.call_mode = "web"  # "web" or "phone"
+        self.recording_url = None
+        self.recording_duration = None
 
 def login_required(f):
     @wraps(f)
@@ -663,6 +668,144 @@ def inbound_caller_lookup():
 def get_members():
     return jsonify(members_data)
 
+@app.route('/api/recording/<session_id>')
+@login_required
+def get_recording(session_id):
+    """
+    Get recording information for a specific session
+    """
+    if session_id in conversations:
+        conv = conversations[session_id]
+        if hasattr(conv, 'recording_url') and conv.recording_url:
+            return jsonify({
+                'call_sid': conv.call_sid,
+                'recording_url': conv.recording_url,
+                'recording_duration': conv.recording_duration,
+                'member_name': f"{conv.selected_member['first_name']} {conv.selected_member['last_name']}" if conv.selected_member else "Unknown"
+            })
+        else:
+            return jsonify({'error': 'No recording available for this session'}), 404
+    else:
+        return jsonify({'error': 'Session not found'}), 404
+
+@app.route('/api/download-recording/<recording_sid>')
+@login_required
+def download_recording(recording_sid):
+    """
+    Download recording file by proxying the Twilio URL with authentication
+    """
+    try:
+        # Construct the Twilio recording URL
+        recording_url = f"https://api.twilio.com/2010-04-01/Accounts/{TWILIO_ACCOUNT_SID}/Recordings/{recording_sid}.mp3"
+        
+        # Make authenticated request to Twilio
+        response = requests.get(
+            recording_url,
+            auth=HTTPBasicAuth(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN),
+            stream=True
+        )
+        
+        if response.status_code == 200:
+            # Stream the audio file back to the client
+            def generate():
+                for chunk in response.iter_content(chunk_size=8192):
+                    yield chunk
+            
+            return app.response_class(
+                generate(),
+                mimetype='audio/mpeg',
+                headers={
+                    'Content-Disposition': f'inline; filename="recording_{recording_sid}.mp3"',
+                    'Content-Type': 'audio/mpeg'
+                }
+            )
+        else:
+            return jsonify({'error': 'Recording not found'}), 404
+            
+    except Exception as e:
+        print(f"Error downloading recording: {e}")
+        return jsonify({'error': 'Failed to download recording'}), 500
+
+@app.route('/recording-webhook', methods=['POST'])
+def handle_recording_webhook():
+    """
+    Webhook called by Twilio when call recording is complete.
+    This provides the recording URL and metadata.
+    """
+    try:
+        # Get recording data from Twilio webhook
+        call_sid = request.form.get('CallSid')
+        recording_url = request.form.get('RecordingUrl')
+        recording_duration = request.form.get('RecordingDuration')
+        recording_sid = request.form.get('RecordingSid')
+        
+        print(f"Recording webhook received for call {call_sid}")
+        print(f"Recording URL: {recording_url}")
+        print(f"Duration: {recording_duration} seconds")
+        
+        if not call_sid or not recording_url:
+            print("Missing required recording data")
+            return '', 400
+        
+        # Find the conversation session with this call_sid
+        matching_session = None
+        for session_id, conv in conversations.items():
+            if hasattr(conv, 'call_sid') and conv.call_sid == call_sid:
+                matching_session = session_id
+                break
+        
+        if matching_session:
+            conv = conversations[matching_session]
+            conv.recording_url = recording_url
+            conv.recording_duration = recording_duration
+            
+            # Notify the UI that recording is available
+            socketio.emit('recording_available', {
+                'call_sid': call_sid,
+                'recording_url': recording_url,
+                'recording_duration': recording_duration,
+                'recording_sid': recording_sid,
+                'member_name': f"{conv.selected_member['first_name']} {conv.selected_member['last_name']}" if conv.selected_member else "Unknown",
+                'timestamp': time.time()
+            }, room=matching_session)
+            
+            print(f"Recording info saved for session {matching_session}")
+        else:
+            print(f"No matching conversation session found for call {call_sid}")
+        
+        return '', 200
+        
+    except Exception as e:
+        print(f"Error in recording webhook: {e}")
+        return '', 500
+
+def get_webhook_base_url():
+    """
+    Get the base URL for webhooks - uses Cloud Run URL in production, ngrok for local development
+    """
+    # Check if we're in production (Cloud Run sets this environment variable)
+    webhook_base_url = os.getenv('WEBHOOK_BASE_URL')
+    if webhook_base_url:
+        print(f"Using production webhook URL: {webhook_base_url}")
+        return webhook_base_url
+    
+    # Fall back to ngrok for local development
+    try:
+        # ngrok exposes tunnels info at localhost:4040
+        response = requests.get('http://localhost:4040/api/tunnels')
+        if response.status_code == 200:
+            tunnels = response.json()['tunnels']
+            for tunnel in tunnels:
+                if tunnel['proto'] == 'https':
+                    ngrok_url = tunnel['public_url']
+                    print(f"Using local ngrok URL: {ngrok_url}")
+                    return ngrok_url
+        print("No ngrok tunnel found")
+        return None
+    except Exception as e:
+        print(f"Could not get ngrok URL: {e}")
+        return None
+
 def make_outbound_call(member_data):
     if not twilio_client:
         return None, "Twilio not configured"
@@ -692,10 +835,24 @@ def make_outbound_call(member_data):
         response.append(connect)
         twiml_content = str(response)
         
+        # Get the base URL for the recording webhook
+        base_url = get_webhook_base_url()
+        if not base_url:
+            # Fallback to BASE_URL environment variable if neither Cloud Run nor ngrok is available
+            base_url = os.getenv('BASE_URL', 'https://your-domain.com')
+            print(f"Using fallback BASE_URL: {base_url}")
+        
+        recording_callback_url = f"{base_url}/recording-webhook"
+        
+        print(f"Using webhook URL: {recording_callback_url}")  # Debug log
+        
         call = twilio_client.calls.create(
             to=member_data['phone'],
             from_=TWILIO_PHONE_NUMBER,
-            twiml=twiml_content
+            twiml=twiml_content,
+            record=True,  # Enable call recording
+            recording_status_callback=recording_callback_url,
+            recording_status_callback_method='POST'
         )
         return call.sid, None
         

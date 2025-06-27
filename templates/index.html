@@ -48,7 +48,7 @@
         }
         
         .app-title h1 {
-            font-size: 32px;
+            font-size: 36px;
             font-weight: 700;
             margin: 0;
         }
@@ -86,7 +86,7 @@
         }
         
         .member-info-panel {
-            width: 40%;
+            width: 30%;
             background: white;
             border-radius: 16px;
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
@@ -100,7 +100,7 @@
         }
         
         .conversation-panel {
-            width: 60%;
+            width: 45%;
             background: white;
             border-radius: 16px;
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
@@ -109,12 +109,149 @@
             flex-direction: column;
         }
         
+        .recording-panel {
+            width: 25%;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        /* Dynamic width adjustments based on visible panels */
         .member-info-panel.show + .conversation-panel {
-            width: 60%;
+            width: 45%;
         }
         
         .member-info-panel:not(.show) + .conversation-panel {
+            width: 75%;
+        }
+        
+        .member-info-panel.show + .conversation-panel + .recording-panel {
+            width: 25%;
+        }
+        
+        .member-info-panel:not(.show) + .conversation-panel + .recording-panel {
+            width: 25%;
+        }
+        
+        .recording-header {
+            background: linear-gradient(135deg, #78BE20, #5C9A1B);
+            color: white;
+            padding: 10px 30px;
+            border-bottom: 1px solid #e5e7eb;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-shrink: 0;
+            height: 70px;
+            box-sizing: border-box;
+        }
+        
+        .recording-header h3 {
+            margin: 0;
+            color: white;
+            font-size: 18px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .recording-content {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            background: #fafafa;
+        }
+        
+        .recording-item {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 15px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            border-left: 4px solid #78BE20;
+        }
+        
+        .recording-item:last-child {
+            margin-bottom: 0;
+        }
+        
+        .recording-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        
+        .recording-details h4 {
+            margin: 0 0 5px 0;
+            color: #333;
+            font-size: 16px;
+            font-weight: 600;
+        }
+        
+        .recording-details p {
+            margin: 0;
+            color: #666;
+            font-size: 14px;
+        }
+        
+        .recording-duration {
+            background: #78BE20;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        
+        .audio-player {
             width: 100%;
+            height: 40px;
+            border-radius: 20px;
+            outline: none;
+        }
+        
+        .audio-player::-webkit-media-controls-panel {
+            background-color: #f8f9fa;
+            border-radius: 20px;
+        }
+        
+        .recording-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        
+        .download-btn {
+            background: #78BE20;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .download-btn:hover {
+            background: #5C9A1B;
+            transform: translateY(-1px);
+        }
+        
+        .no-recordings {
+            text-align: center;
+            color: #666;
+            font-style: italic;
+            padding: 40px 20px;
+            margin-top: 100px;
         }
         
         .bottom-section {
@@ -129,17 +266,20 @@
         }
         
         .members-table-header {
-            background: #fafafa;
-            padding: 20px 30px;
+            background: linear-gradient(135deg, #78BE20, #5C9A1B);
+            color: white;
+            padding: 10px 30px;
             border-bottom: 1px solid #e5e7eb;
             display: flex;
             justify-content: space-between;
             align-items: center;
+            height: 70px;
+            box-sizing: border-box;
         }
         
         .members-table-header h3 {
             margin: 0;
-            color: #333;
+            color: white;
             font-size: 18px;
             font-weight: 600;
         }
@@ -290,18 +430,21 @@
         }
         
         .conversation-header {
-            background: #fafafa;
-            padding: 20px 30px;
+            background: linear-gradient(135deg, #78BE20, #5C9A1B);
+            color: white;
+            padding: 10px 30px;
             border-bottom: 1px solid #e5e7eb;
             display: flex;
             justify-content: space-between;
             align-items: center;
             flex-shrink: 0;
+            height: 70px;
+            box-sizing: border-box;
         }
         
         .status-section {
             display: flex;
-            align-items: center;
+            align-items: right;
             gap: 15px;
         }
         
@@ -310,8 +453,8 @@
             align-items: center;
             gap: 10px;
             font-weight: 500;
-            color: #333;
-            font-size: 15px;
+            color: white;
+            font-size: 18px;
         }
         
         .status-indicator {
@@ -342,8 +485,9 @@
         }
         
         .audio-visualizer {
-            background: linear-gradient(135deg, #78BE20, #5C9A1B);
-            color: white;
+            background: white;
+            color: #333;
+            border: 2px solid rgba(255, 255, 255, 0.3);
             padding: 12px 20px;
             border-radius: 25px;
             font-size: 14px;
@@ -352,12 +496,13 @@
             gap: 10px;
             min-width: 200px;
             justify-content: center;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
         }
         
         .recording-animation {
             width: 8px;
             height: 8px;
-            background: white;
+            background: #78BE20;
             border-radius: 50%;
             animation: pulse 1s infinite;
         }
@@ -801,21 +946,23 @@
         .member-info-header {
             background: linear-gradient(135deg, #78BE20, #5C9A1B);
             color: white;
-            padding: 20px 30px;
+            padding: 10px 30px;
             display: flex;
             align-items: center;
             gap: 15px;
+            height: 70px;
+            box-sizing: border-box;
         }
         
         .member-avatar {
-            width: 60px;
-            height: 60px;
+            width: 35px;
+            height: 35px;
             border-radius: 50%;
             background: rgba(255, 255, 255, 0.2);
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 28px;
+            font-size: 18px;
             font-weight: bold;
         }
         
@@ -937,8 +1084,9 @@
         <div class="header-content">
             <div class="app-title">
                 <div>
-                    <h1>Harmony</h1>
-                    <p>A Humana Digital Care Manager Assistant</p>
+                    <h1>Humana</h1>
+                    <!--<h1>Harmony</h1>
+                    <p>A Humana Digital Care Manager Assistant</p>-->
                 </div>
             </div>
             <div class="header-controls">
@@ -946,16 +1094,16 @@
                     <span>▶</span> Start Assessment
                 </button>
                 <button id="callBtn" class="btn" onclick="initiateCall()" disabled>
-                    <span>📞</span> Call Me
+                    <span>📞</span> Call Member
                 </button>
                 <button id="stopBtn" class="btn btn-secondary" onclick="stopConversation()" disabled>
                     <span>⏹</span> Stop Assessment
                 </button>
                 <button id="downloadBtn" class="btn btn-secondary" onclick="downloadTranscript()" style="display: none;">
-                    <span>📥</span> Download Transcript
+                    Download Transcript
                 </button>
                 <a href="/logout" class="btn btn-secondary" style="text-decoration: none; margin-left: 20px;">
-                    <span>🚪</span> Logout
+                    Logout
                 </a>
             </div>
         </div>
@@ -984,12 +1132,12 @@
                         <div class="status-section">
                             <div id="status" class="status ready">
                                 <div class="status-indicator"></div>
-                                <span>Ready to begin your health assessment</span>
+                                <span>Ready to begin your Health Risk Assessment</span>
                             </div>
                         </div>
-                        <div class="audio-visualizer" id="audioVisualizer">
+                        <!--<div class="audio-visualizer" id="audioVisualizer">
                             Select a member to begin
-                        </div>
+                        </div>-->
                     </div>
                     
                     <div class="conversation-area" id="conversationArea">
@@ -999,11 +1147,24 @@
                     </div>
                 </div>
             </div>
+            
+            <div class="recording-panel" id="recordingPanel">
+                <div class="recording-header">
+                    <h3>
+                        Call Recordings
+                    </h3>
+                </div>
+                <div class="recording-content" id="recordingContent">
+                    <div class="no-recordings">
+                        No recordings available yet
+                    </div>
+                </div>
+            </div>
         </div>
         
         <div class="bottom-section">
             <div class="members-table-header">
-                <h3>Members</h3>
+                <h3>Call Logs</h3>
             </div>
             <div class="members-table-container">
                 <table class="members-table">
@@ -1188,6 +1349,11 @@
                     text: data.text,
                     timestamp: new Date().toLocaleTimeString()
                 });
+            });
+            
+            socket.on('recording_available', function(data) {
+                console.log('Recording available:', data);
+                addRecordingToPanel(data);
             });
         }
         
@@ -2083,6 +2249,71 @@ If none of these work, try the phone call option instead - it doesn't require br
             } else {
                 showError('No active assessment for this member.');
             }
+        }
+        
+        // Recording Panel Functions (panel is always visible now)
+        function showRecordingPanel() {
+            // Recording panel is now always visible - this function kept for compatibility
+            console.log('Recording panel is always visible');
+        }
+        
+        function addRecordingToPanel(recordingData) {
+            console.log('Adding recording to panel:', recordingData);
+            
+            const recordingContent = document.getElementById('recordingContent');
+            
+            // Remove "no recordings" message if it exists
+            const noRecordings = recordingContent.querySelector('.no-recordings');
+            if (noRecordings) {
+                noRecordings.remove();
+            }
+            
+            // Create recording item
+            const recordingItem = document.createElement('div');
+            recordingItem.className = 'recording-item';
+            recordingItem.id = `recording-${recordingData.call_sid}`;
+            
+            // Format timestamp
+            const timestamp = new Date(recordingData.timestamp * 1000).toLocaleString();
+            
+            // Create download URL - we need to create a proxy endpoint for this
+            const downloadUrl = `/api/download-recording/${recordingData.recording_sid}`;
+            
+            recordingItem.innerHTML = `
+                <div class="recording-info">
+                    <div class="recording-details">
+                        <h4>${recordingData.member_name}</h4>
+                        <p>${timestamp}</p>
+                    </div>
+                    <div class="recording-duration">${recordingData.recording_duration}s</div>
+                </div>
+                <audio class="audio-player" controls>
+                    <source src="${downloadUrl}" type="audio/mpeg">
+                    Your browser does not support the audio element.
+                </audio>
+                <div class="recording-actions">
+                    <button class="download-btn" onclick="downloadRecording('${recordingData.recording_sid}', '${recordingData.member_name}')">
+                        Download
+                    </button>
+                </div>
+            `;
+            
+            // Add to top of recording content
+            recordingContent.insertBefore(recordingItem, recordingContent.firstChild);
+            
+            // Show success message
+            addSystemMessage(`📹 Call recording available for ${recordingData.member_name} (${recordingData.recording_duration} seconds)`);
+        }
+        
+        function downloadRecording(recordingSid, memberName) {
+            // Create download link
+            const downloadUrl = `/api/download-recording/${recordingSid}`;
+            const link = document.createElement('a');
+            link.href = downloadUrl;
+            link.download = `${memberName}_recording_${new Date().toISOString().slice(0, 10)}.mp3`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
         }
     </script>
 </body>
