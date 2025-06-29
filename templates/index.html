@@ -86,7 +86,7 @@
         }
         
         .member-info-panel {
-            width: 30%;
+            width: 25%;
             background: white;
             border-radius: 16px;
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
@@ -100,7 +100,7 @@
         }
         
         .conversation-panel {
-            width: 45%;
+            width: 66%;
             background: white;
             border-radius: 16px;
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
@@ -110,7 +110,7 @@
         }
         
         .recording-panel {
-            width: 25%;
+            width: 18%;
             background: white;
             border-radius: 16px;
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
@@ -119,21 +119,29 @@
             flex-direction: column;
         }
         
-        /* Dynamic width adjustments based on visible panels */
+        /* Dynamic width adjustments for four panels */
         .member-info-panel.show + .conversation-panel {
-            width: 45%;
+            width: 37%;
         }
         
         .member-info-panel:not(.show) + .conversation-panel {
-            width: 75%;
+            width: 52%;
         }
         
         .member-info-panel.show + .conversation-panel + .recording-panel {
-            width: 25%;
+            width: 1%;
         }
         
         .member-info-panel:not(.show) + .conversation-panel + .recording-panel {
-            width: 25%;
+            width: 5%;
+        }
+        
+        .member-info-panel.show + .conversation-panel + .recording-panel + .agent-assist-panel {
+            width: 26%;
+        }
+        
+        .member-info-panel:not(.show) + .conversation-panel + .recording-panel + .agent-assist-panel {
+            width: 41%;
         }
         
         .recording-header {
@@ -252,6 +260,183 @@
             font-style: italic;
             padding: 40px 20px;
             margin-top: 100px;
+        }
+        
+        /* Agent Assist Panel Styles */
+        .agent-assist-panel {
+            width: 24%;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .agent-assist-header {
+            background: linear-gradient(135deg, #78BE20, #5C9A1B);
+            color: white;
+            padding: 10px 30px;
+            border-bottom: 1px solid #e5e7eb;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-shrink: 0;
+            height: 70px;
+            box-sizing: border-box;
+        }
+        
+        .agent-assist-header h3 {
+            margin: 0;
+            color: white;
+            font-size: 18px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .agent-assist-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: #fafafa;
+            overflow: hidden;
+        }
+        
+        .auto-summary-section {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            border-bottom: 2px solid #e5e7eb;
+            margin-top: 50px;
+        }
+        
+        .manual-query-section {
+            padding: 15px;
+            background: white;
+            flex-shrink: 0;
+        }
+        
+        .query-input-container {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+        
+        .query-input-container input {
+            flex: 1;
+            padding: 8px 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+            font-size: 14px;
+            outline: none;
+        }
+        
+        .query-input-container input:focus {
+            border-color: #78BE20;
+            box-shadow: 0 0 0 2px rgba(120, 190, 32, 0.1);
+        }
+        
+        .query-input-container button {
+            background: #78BE20;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+        }
+        
+        .query-input-container button:hover {
+            background: #5C9A1B;
+        }
+        
+        .quick-questions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-bottom: 10px;
+        }
+        
+        .quick-btn {
+            background: #f3f4f6;
+            border: 1px solid #d1d5db;
+            color: #374151;
+            padding: 4px 8px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s ease;
+        }
+        
+        .quick-btn:hover {
+            background: #78BE20;
+            color: white;
+            border-color: #78BE20;
+        }
+        
+        .summary-container {
+            background: white;
+            border-radius: 12px;
+            padding: 15px;
+            margin-bottom: 15px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            border-left: 4px solid #78BE20;
+        }
+        
+        .summary-header-text {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            color: #78BE20;
+            margin-bottom: 10px;
+        }
+        
+        .summary-text {
+            color: #374151;
+            font-size: 14px;
+            line-height: 1.5;
+            margin-bottom: 10px;
+        }
+        
+        .summary-timestamp {
+            color: #6b7280;
+            font-size: 12px;
+            font-style: italic;
+        }
+        
+        .manual-response {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 12px;
+            margin-top: 10px;
+            border-left: 3px solid #3b82f6;
+        }
+        
+        .manual-response-header {
+            font-size: 12px;
+            font-weight: 600;
+            color: #3b82f6;
+            margin-bottom: 8px;
+        }
+        
+        .manual-response-text {
+            color: #374151;
+            font-size: 14px;
+            line-height: 1.4;
+        }
+        
+        .no-summary {
+            text-align: center;
+            color: #666;
+            font-style: italic;
+            padding: 40px 20px;
+            margin-top: 50px;
         }
         
         .bottom-section {
@@ -598,6 +783,8 @@
             opacity: 0.7;
             margin-top: 6px;
         }
+        
+
         
         @keyframes slideIn {
             from {
@@ -1147,6 +1334,42 @@
                     </div>
                 </div>
             </div>
+
+            <div class="agent-assist-panel" id="agentAssistPanel">
+                <div class="agent-assist-header">
+                    <h3>
+                        <!--<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M9 12l2 2 4-4"></path>
+                            <path d="M21 12c.552 0 1-.448 1-1s-.448-1-1-1-1 .448-1 1 .448 1 1 1z"></path>
+                            <path d="M3 12c.552 0 1-.448 1-1s-.448-1-1-1-1 .448-1 1 .448 1 1 1z"></path>
+                            <path d="M12 21c.552 0 1-.448 1-1s-.448-1-1-1-1 .448-1 1 .448 1 1 1z"></path>
+                            <path d="M12 3c.552 0 1-.448 1-1s-.448-1-1-1-1 .448-1 1 .448 1 1 1z"></path>
+                        </svg>-->
+                        Agent Assist
+                    </h3>
+                </div>
+                <div class="agent-assist-content" id="agentAssistContent">
+                    <div class="auto-summary-section" id="autoSummarySection">
+                        <div class="no-summary">
+                            No summary available yet
+                        </div>
+                    </div>
+                    <div class="manual-query-section">
+                        <div class="query-input-container">
+                            <input type="text" id="queryInput" placeholder="Ask about the conversation..." />
+                            <button id="queryBtn" onclick="sendManualQuery()">➤</button>
+                        </div>
+                        <!--<div class="quick-questions">
+                            <button class="quick-btn" onclick="sendQuickQuery('What are the main concerns?')">Main Concerns?</button>
+                            <button class="quick-btn" onclick="sendQuickQuery('What follow-up actions are needed?')">Action Items?</button>
+                            <button class="quick-btn" onclick="sendQuickQuery('What is the member sentiment?')">Sentiment?</button>
+                        </div>-->
+                        <div class="manual-response" id="manualResponse" style="display: none;">
+                            <!-- Manual query responses will appear here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
             
             <div class="recording-panel" id="recordingPanel">
                 <div class="recording-header">
@@ -1230,6 +1453,7 @@
                 messageCount = 0;
                 conversationTranscript = [];
                 clearConversation();
+                clearAgentAssist();
                 document.getElementById('startBtn').disabled = true;
                 document.getElementById('stopBtn').disabled = false;
                 document.getElementById('downloadBtn').style.display = 'inline-flex';
@@ -1296,6 +1520,7 @@
                 updateStatus('Health assessment completed', 'ready');
                 document.getElementById('startBtn').disabled = false;
                 document.getElementById('stopBtn').disabled = true;
+                // Keep Agent Assist summaries visible after conversation ends
             });
             
             socket.on('conversation_should_end', function(data) {
@@ -1326,6 +1551,7 @@
                 
                 // Clear conversation area for phone call
                 clearConversation();
+                clearAgentAssist();
                 addSystemMessage(`📞 Calling ${data.member_name} at ${data.member_phone}...`);
             });
             
@@ -1354,6 +1580,16 @@
             socket.on('recording_available', function(data) {
                 console.log('Recording available:', data);
                 addRecordingToPanel(data);
+            });
+            
+            socket.on('agent_assist_summary', function(data) {
+                console.log('Agent assist summary received:', data);
+                updateAutoSummary(data.summary, data.timestamp);
+            });
+            
+            socket.on('agent_assist_response', function(data) {
+                console.log('Agent assist manual response received:', data);
+                showManualResponse(data.query, data.response, data.timestamp);
             });
         }
         
@@ -2292,9 +2528,9 @@ If none of these work, try the phone call option instead - it doesn't require br
                     Your browser does not support the audio element.
                 </audio>
                 <div class="recording-actions">
-                    <button class="download-btn" onclick="downloadRecording('${recordingData.recording_sid}', '${recordingData.member_name}')">
+                    <!--<button class="download-btn" onclick="downloadRecording('${recordingData.recording_sid}', '${recordingData.member_name}')">
                         Download
-                    </button>
+                    </button>-->
                 </div>
             `;
             
@@ -2315,6 +2551,129 @@ If none of these work, try the phone call option instead - it doesn't require br
             link.click();
             document.body.removeChild(link);
         }
+        
+        // Agent Assist Functions
+        function updateAutoSummary(summary, timestamp) {
+            console.log('Updating auto summary:', summary);
+            
+            const autoSummarySection = document.getElementById('autoSummarySection');
+            
+            // Remove "no summary" message if it exists
+            const noSummary = autoSummarySection.querySelector('.no-summary');
+            if (noSummary) {
+                noSummary.remove();
+            }
+            
+            // Create a new summary container for each update
+            const summaryContainer = document.createElement('div');
+            summaryContainer.className = 'summary-container';
+            
+            // Format timestamp
+            const formattedTime = new Date(timestamp * 1000).toLocaleTimeString();
+            
+            // Set container content
+            summaryContainer.innerHTML = `
+                <div class="summary-header-text">
+                    <!--<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M14 9V5a3 3 0 0 0-6 0v4"></path>
+                        <rect x="2" y="9" width="20" height="12" rx="2" ry="2"></rect>
+                        <circle cx="12" cy="15" r="1"></circle>
+                    </svg>-->
+                    Live Summary
+                </div>
+                <div class="summary-text">${summary}</div>
+                <div class="summary-timestamp">Updated: ${formattedTime}</div>
+            `;
+            
+            // Append the new summary container to the section
+            autoSummarySection.appendChild(summaryContainer);
+            
+            // Scroll to show the latest summary
+            autoSummarySection.scrollTop = autoSummarySection.scrollHeight;
+        }
+        
+        function clearAgentAssist() {
+            const autoSummarySection = document.getElementById('autoSummarySection');
+            
+            autoSummarySection.innerHTML = `
+                <div class="no-summary">
+                    Live conversation summary
+                </div>
+            `;
+        }
+        
+        function sendManualQuery() {
+            const queryInput = document.getElementById('queryInput');
+            const query = queryInput.value.trim();
+            
+            if (!query) {
+                return;
+            }
+            
+            console.log('Sending manual query:', query);
+            
+            if (socket) {
+                socket.emit('agent_assist_query', { query: query });
+                queryInput.value = '';
+            }
+        }
+        
+        function sendQuickQuery(query) {
+            console.log('Sending quick query:', query);
+            
+            if (socket) {
+                socket.emit('agent_assist_query', { query: query });
+            }
+        }
+        
+        function showManualResponse(query, response, timestamp) {
+            console.log('Showing manual response:', query, response);
+            
+            const autoSummarySection = document.getElementById('autoSummarySection');
+            
+            // Remove "no summary" message if it exists
+            const noSummary = autoSummarySection.querySelector('.no-summary');
+            if (noSummary) {
+                noSummary.remove();
+            }
+            
+            // Create a response container
+            const responseContainer = document.createElement('div');
+            responseContainer.className = 'summary-container';
+            
+            // Format timestamp
+            const formattedTime = new Date(timestamp * 1000).toLocaleTimeString();
+            
+            // Set container content with both query and response
+            responseContainer.innerHTML = `
+                <div class="summary-header-text">
+                    🤖 Response
+                </div>
+                <div class="summary-text">
+                    <strong>Q:</strong> ${query}<br><br>
+                    <strong>A:</strong> ${response}
+                </div>
+                <div class="summary-timestamp">Answered: ${formattedTime}</div>
+            `;
+            
+            // Append the response container to the section
+            autoSummarySection.appendChild(responseContainer);
+            
+            // Scroll to show the latest response
+            autoSummarySection.scrollTop = autoSummarySection.scrollHeight;
+        }
+        
+        // Add Enter key support for query input
+        document.addEventListener('DOMContentLoaded', function() {
+            const queryInput = document.getElementById('queryInput');
+            if (queryInput) {
+                queryInput.addEventListener('keypress', function(e) {
+                    if (e.key === 'Enter') {
+                        sendManualQuery();
+                    }
+                });
+            }
+        });
     </script>
 </body>
 </html>

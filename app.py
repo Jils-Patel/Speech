@@ -33,6 +33,7 @@ AGENT_ID = os.getenv("AGENT_ID")
 LOCATION_ID = os.getenv("LOCATION_ID")
 LANGUAGE_CODE = os.getenv("LANGUAGE_CODE", "en-US")
 BASE_URL = os.getenv("BASE_URL", "https://your-domain.com")
+SUMMARY_AGENT_ID = os.getenv("SUMMARY_AGENT_ID")  # Your HealthSummarization agent ID
 
 tts_client = texttospeech.TextToSpeechClient.from_service_account_json(os.getenv("GCP_KEY_PATH"))
 speech_client = speech.SpeechClient.from_service_account_json(os.getenv("GCP_KEY_PATH"))
@@ -41,6 +42,10 @@ twilio_client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
 credentials = service_account.Credentials.from_service_account_file(os.getenv("GCP_KEY_PATH"))
 client_options = ClientOptions(api_endpoint=f"{LOCATION_ID}-dialogflow.googleapis.com:443")
 dialogflow_client = dialogflowcx.SessionsClient( credentials=credentials, client_options=client_options)
+
+# Separate client for global region summarization agent
+global_client_options = ClientOptions(api_endpoint="dialogflow.googleapis.com:443")
+global_dialogflow_client = dialogflowcx.SessionsClient(credentials=credentials, client_options=global_client_options)
 
 conversations = {}
 sent_user_messages = {} # Track sent messages to prevent duplicates (per session)
@@ -70,6 +75,11 @@ class ConversationSession:
         self.call_mode = "web"  # "web" or "phone"
         self.recording_url = None
         self.recording_duration = None
+        # Health Summarization agent session
+        self.summary_session_id = str(uuid.uuid4())
+        self.summary_agent_path = f"projects/{PROJECT_ID}/locations/global/agents/{SUMMARY_AGENT_ID}"
+        self.summary_session_path = f"{self.summary_agent_path}/sessions/{self.summary_session_id}"
+        self.exchange_count = 0
 
 def login_required(f):
     @wraps(f)
@@ -193,6 +203,123 @@ def get_dialogflow(text, session_path, member_params=None):
             
     except Exception as e:
         return None, None
+
+def format_transcript_for_summary(transcript_data):
+    """Format transcript data for the summarization agent"""
+    formatted_text = ""
+    for entry in transcript_data:
+        if entry.get('question'):
+            formatted_text += f"Customer: {entry['question']}\n"
+        if entry.get('answer'):
+            formatted_text += f"Agent: {entry['answer']}\n"
+    return formatted_text.strip()
+
+def call_summary_agent(session_path, query_text, transcript_text=None):
+    """Call the HealthSummarization agent"""
+    try:
+        # Prepare the query input
+        text_input = dialogflowcx.TextInput(text=query_text)
+        query_input = dialogflowcx.QueryInput(text=text_input, language_code=LANGUAGE_CODE)
+        
+        # Create request with session parameters if transcript provided
+        request = dialogflowcx.DetectIntentRequest(
+            session=session_path,
+            query_input=query_input,
+        )
+        
+        # Add transcript as session parameter if provided
+        if transcript_text:
+            request.query_params = dialogflowcx.QueryParameters(
+                parameters={'transcript': transcript_text}
+            )
+        
+        # Use global client for summarization agent (since it's in global region)
+        response = global_dialogflow_client.detect_intent(request=request)
+        
+        # Extract response text
+        response_texts = []
+        for msg in response.query_result.response_messages:
+            if msg.text and msg.text.text:
+                response_texts.extend(msg.text.text)
+        
+        if response_texts:
+            return " ".join(response_texts)
+        else:
+            return "No summary available"
+            
+    except Exception as e:
+        print(f"Error calling summary agent: {e}")
+        return f"Error generating summary: {str(e)}"
+
+def generate_auto_summary(session_id):
+    """Generate automatic summary every few exchanges"""
+    try:
+        if session_id not in conversations:
+            return
+            
+        conv = conversations[session_id]
+        
+        # Only generate summary if we have content and it's been a few exchanges
+        if len(conv.transcript) < 2:
+            return
+            
+        # Format transcript for summarization
+        transcript_text = format_transcript_for_summary(conv.transcript)
+        
+        if not transcript_text.strip():
+            return
+            
+        print(f"Generating auto-summary for session {session_id}")
+        print(f"Transcript length: {len(transcript_text)} characters")
+        
+        # Call summarization agent
+        summary = call_summary_agent(
+            conv.summary_session_path, 
+            "Summarize the conversation",
+            transcript_text
+        )
+        
+        print(f"Generated summary: {summary}")
+        
+        # Emit summary to frontend
+        socketio.emit('agent_assist_summary', {
+            'summary': summary,
+            'timestamp': time.time(),
+            'type': 'auto'
+        })
+        
+    except Exception as e:
+        print(f"Error generating auto summary: {e}")
+
+def handle_manual_query(session_id, query):
+    """Handle manual query from care manager"""
+    try:
+        if session_id not in conversations:
+            return "No active conversation found"
+            
+        conv = conversations[session_id]
+        
+        # Format transcript for query
+        transcript_text = format_transcript_for_summary(conv.transcript)
+        
+        if not transcript_text.strip():
+            return "No conversation content available for analysis"
+        
+        print(f"Processing manual query for session {session_id}: {query}")
+        
+        # Call summarization agent with the query
+        response = call_summary_agent(
+            conv.summary_session_path,
+            query,
+            transcript_text
+        )
+        
+        print(f"Manual query response: {response}")
+        return response
+        
+    except Exception as e:
+        print(f"Error handling manual query: {e}")
+        return f"Error processing query: {str(e)}"
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -329,6 +456,11 @@ def handle_audio_data(data):
                     
                     emit('transcript_updated', {'transcript': conv.transcript})
                     
+                    # Increment exchange count and generate auto-summary every 2-3 exchanges
+                    conv.exchange_count += 1
+                    if conv.exchange_count % 2 == 0:  # Every 2 exchanges
+                        generate_auto_summary(session_id)
+                    
                     try:
                         if query_result and hasattr(query_result, 'intent') and query_result.intent:
                             if hasattr(query_result.intent, 'end_conversation') and query_result.intent.end_conversation:
@@ -385,6 +517,40 @@ def handle_select_member(data):
             emit('error', {'message': 'Member not found'})
     else:
         emit('error', {'message': 'Session not found. Please refresh the page.'})
+
+@socketio.on('agent_assist_query')
+def handle_agent_assist_query(data):
+    """Handle manual queries from care manager"""
+    session_id = request.sid
+    query = data.get('query', '').strip()
+    
+    if not query:
+        emit('agent_assist_response', {
+            'query': query,
+            'response': 'Please enter a question to analyze the conversation.',
+            'timestamp': time.time(),
+            'type': 'manual'
+        })
+        return
+    
+    try:
+        response = handle_manual_query(session_id, query)
+        
+        emit('agent_assist_response', {
+            'query': query,
+            'response': response,
+            'timestamp': time.time(),
+            'type': 'manual'
+        })
+        
+    except Exception as e:
+        print(f"Error handling agent assist query: {e}")
+        emit('agent_assist_response', {
+            'query': query,
+            'response': f'Error processing query: {str(e)}',
+            'timestamp': time.time(),
+            'type': 'manual'
+        })
 
 @app.route('/dialogflow-webhook', methods=['POST'])
 def dialogflow_webhook():
@@ -553,6 +719,12 @@ def dialogflow_webhook():
             socketio.emit('transcript_updated', {
                 'transcript': conv.transcript
             }, room=phone_conversation_session)
+            
+            # Generate auto-summary for phone conversations
+            if user_query and agent_response and conv:
+                conv.exchange_count += 1
+                if conv.exchange_count % 2 == 0:  # Every 2 exchanges
+                    generate_auto_summary(phone_conversation_session)
         
         return jsonify({
             'fulfillmentResponse': {
