@@ -34,6 +34,7 @@ LOCATION_ID = os.getenv("LOCATION_ID")
 LANGUAGE_CODE = os.getenv("LANGUAGE_CODE", "en-US")
 BASE_URL = os.getenv("BASE_URL", "https://your-domain.com")
 SUMMARY_AGENT_ID = os.getenv("SUMMARY_AGENT_ID")  # Your HealthSummarization agent ID
+QUERY_AGENT_ID = os.getenv("QUERY_AGENT_ID")  # Your dedicated Query agent ID
 
 tts_client = texttospeech.TextToSpeechClient.from_service_account_json(os.getenv("GCP_KEY_PATH"))
 speech_client = speech.SpeechClient.from_service_account_json(os.getenv("GCP_KEY_PATH"))
@@ -251,6 +252,59 @@ def call_summary_agent(session_path, query_text, transcript_text=None):
         print(f"Error calling summary agent: {e}")
         return f"Error generating summary: {str(e)}"
 
+def call_query_agent(session_path, query_text, transcript_text=None):
+    """Call the dedicated Query agent for chat functionality"""
+    try:
+        print(f"🔍 QUERY AGENT DEBUG:")
+        print(f"   Agent ID: {QUERY_AGENT_ID}")
+        print(f"   Session: {session_path}")
+        print(f"   Query: {query_text}")
+        print(f"   Has transcript: {transcript_text is not None}")
+        if transcript_text:
+            print(f"   Transcript preview: {transcript_text[:200]}...")
+        
+        # Prepare the query input
+        text_input = dialogflowcx.TextInput(text=query_text)
+        query_input = dialogflowcx.QueryInput(text=text_input, language_code=LANGUAGE_CODE)
+        
+        # Create request with session parameters if transcript provided
+        request = dialogflowcx.DetectIntentRequest(
+            session=session_path,
+            query_input=query_input,
+        )
+        
+        # Add transcript as session parameter if provided
+        if transcript_text:
+            request.query_params = dialogflowcx.QueryParameters(
+                parameters={'transcript': transcript_text}
+            )
+            print(f"   ✅ Transcript added to session parameters")
+        
+        # Use global client for query agent (since it's in global region)
+        print(f"   🌐 Calling global Dialogflow client...")
+        response = global_dialogflow_client.detect_intent(request=request)
+        
+        print(f"   📥 Raw response received")
+        print(f"   Intent: {response.query_result.intent.display_name if response.query_result.intent else 'None'}")
+        print(f"   Match confidence: {response.query_result.match.confidence if response.query_result.match else 'None'}")
+        
+        # Extract response text
+        response_texts = []
+        for msg in response.query_result.response_messages:
+            if msg.text and msg.text.text:
+                response_texts.extend(msg.text.text)
+        
+        final_response = " ".join(response_texts) if response_texts else "No answer available"
+        print(f"   ✅ Final response: {final_response[:100]}...")
+        
+        return final_response
+            
+    except Exception as e:
+        print(f"❌ Error calling query agent: {e}")
+        import traceback
+        print(f"Full traceback: {traceback.format_exc()}")
+        return f"Error processing query: {str(e)}"
+
 def generate_auto_summary(session_id):
     """Generate automatic summary every few exchanges"""
     try:
@@ -292,12 +346,19 @@ def generate_auto_summary(session_id):
         print(f"Error generating auto summary: {e}")
 
 def handle_manual_query(session_id, query):
-    """Handle manual query from care manager"""
+    """Handle manual query from care manager using dedicated Query agent for chat"""
     try:
-        if session_id not in conversations:
+        # Find any active conversation session (phone calls usually have transcripts)
+        active_conv = None
+        for sid, conv in conversations.items():
+            if conv.is_active and len(conv.transcript) > 0:
+                active_conv = conv
+                break
+        
+        if not active_conv:
             return "No active conversation found"
             
-        conv = conversations[session_id]
+        conv = active_conv
         
         # Format transcript for query
         transcript_text = format_transcript_for_summary(conv.transcript)
@@ -306,15 +367,28 @@ def handle_manual_query(session_id, query):
             return "No conversation content available for analysis"
         
         print(f"Processing manual query for session {session_id}: {query}")
+        print(f"Active conversations: {len([c for c in conversations.values() if c.is_active])}")
+        print(f"Conversations with transcripts: {len([c for c in conversations.values() if len(c.transcript) > 0])}")
+        print(f"Using conversation with {len(conv.transcript)} transcript entries")
         
-        # Call summarization agent with the query
-        response = call_summary_agent(
-            conv.summary_session_path,
+        # Create a fresh session for each manual query to avoid context contamination
+        fresh_session_id = str(uuid.uuid4())
+        fresh_session_path = f"projects/{PROJECT_ID}/locations/global/agents/{QUERY_AGENT_ID}/sessions/{fresh_session_id}"
+        
+        # Call dedicated query agent with fresh session
+        print(f"Calling query agent with:")
+        print(f"  Session path: {fresh_session_path}")
+        print(f"  Query: {query}")
+        print(f"  Transcript length: {len(transcript_text)} characters")
+        
+        response = call_query_agent(
+            fresh_session_path,
             query,
             transcript_text
         )
         
         print(f"Manual query response: {response}")
+        print(f"Query agent ID being used: {QUERY_AGENT_ID}")
         return response
         
     except Exception as e:
